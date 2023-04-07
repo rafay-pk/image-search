@@ -56,7 +56,7 @@ jobs:
         tag_name: ${{ steps.extract_branch.outputs.branch }}-0.${{ steps.extract_commit.outputs.commits }}
         release_name: ${{ steps.extract_branch.outputs.branch }}-0.${{ steps.extract_commit.outputs.commits }}
         draft: false
-        prerelease: true
+        prerelease: false
     - name: Upload Release Asset
       uses: actions/upload-release-asset@v1
       env:

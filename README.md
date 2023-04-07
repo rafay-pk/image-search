@@ -1,6 +1,7 @@
 ![](.github/docs/banner.jpg)
 
 ![](https://img.shields.io/github/license/rafay-pk/image-search) 
+![](https://img.shields.io/badge/python-v3.11.3-blue)
 ![](https://img.shields.io/github/v/release/rafay-pk/image-search) 
 ![](https://img.shields.io/github/downloads/rafay-pk/image-search/total)
 ![](https://img.shields.io/github/contributors-anon/rafay-pk/image-search)
