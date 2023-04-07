@@ -1,4 +1,6 @@
 import sys, os
+from PyQt6.QtCore import Qt, QSize, QDir, QSize
+from PyQt6.QtGui import QFileSystemModel, QPixmap, QMovie, QIcon,  QAction
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -15,17 +17,19 @@ from PyQt6.QtWidgets import (
     QDockWidget,
     QToolBar
 )
-from PyQt6.QtGui import QFileSystemModel, QPixmap, QMovie, QIcon,  QAction
-from PyQt6.QtCore import Qt, QSize, QDir, QSize
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
+
+        # region Setup
         super().__init__()
         self.setWindowTitle("Media Magic")
         self.resize(QSize(500, 300))
-        self.menu_bar = self.menuBar()
+        # endregion
 
+        # region Menu Bar
+        self.menu_bar = self.menuBar()
         self.menu_file = self.menu_bar.addMenu("File")
         self.action_newView = self.menu_file.addAction("New View \tCtrl+N")
         self.action_newView.setStatusTip("Create a New View of your Media Files")
@@ -55,7 +59,9 @@ class MainWindow(QMainWindow):
         self.action_openFile = self.menu_dev.addAction("Open File")
         self.action_openFile.triggered.connect(self.open_file)
         # DEV
+        # endregion
 
+        # region Search Bar
         self.search_bar = QLineEdit()
         self.search_enter = QPushButton("Search")
         self.search_enter.pressed.connect(self.search)
@@ -72,7 +78,9 @@ class MainWindow(QMainWindow):
         hidder = QDockWidget()
         self.dock_search.setTitleBarWidget(hidder)
         hidder.setVisible(False)
-
+        # endregion
+        
+        # region Folder View
         self.folders = QTreeView()
         self.dock_folders = QDockWidget("Folders")
         self.dock_folders.setWidget(self.folders)
@@ -83,7 +91,9 @@ class MainWindow(QMainWindow):
         self.folders.setHeaderHidden(True)
         for column in range(1, self.fileSystem.columnCount()):
             self.folders.setColumnHidden(column, True)
-
+        # endregion
+       
+        # region Browser View
         self.browser = QListView()
         browserToggles = QToolBar()
         thumbs = QAction(QIcon("icons/thumbs.png"),"", self)
@@ -103,7 +113,9 @@ class MainWindow(QMainWindow):
         self.browserView.setLayout(browserLayout)
         self.dock_browser = QDockWidget("Browser")
         self.dock_browser.setWidget(self.browserView)
+        # endregion
 
+        # region Media View
         self.media = QLabel()
         mediaLayout = QVBoxLayout()
         mediaLayout.addWidget(self.media)
@@ -111,20 +123,22 @@ class MainWindow(QMainWindow):
         mediaLayout.setContentsMargins(0, 0, 0, 0)
         mediaView = QWidget()
         mediaView.setLayout(mediaLayout)
-
         self.dock_media = QDockWidget("Media")
         self.dock_media.setWidget(mediaView)
+        # endregion
 
+        # region Docking
         self.addDockWidget(Qt.DockWidgetArea.TopDockWidgetArea, self.dock_search)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.dock_folders)
         self.splitDockWidget(self.dock_folders, self.dock_browser, Qt.Orientation.Horizontal)
         self.splitDockWidget(self.dock_browser, self.dock_media, Qt.Orientation.Horizontal)
-
+        # endregion
+        
+        # region Setup
         self.status = QStatusBar(self)
-        # self.status.addWidget(browserToggles)
-        # self.status.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         self.setStatusBar(self.status)
         self.show()
+        # endregion
 
     def add_folder(self):
         path = QFileDialog.getExistingDirectory(self, 
