@@ -85,9 +85,12 @@ class MainWindow(QMainWindow):
         self.dock_folders = QDockWidget("Folders")
         self.dock_folders.setWidget(self.folders)
         self.fileSystem = QFileSystemModel()
-        self.fileSystem.setRootPath("")
+        self.folder_path = os.getcwd().replace("\\", '/') + "/data/folders/"
+        os.makedirs(self.folder_path, exist_ok=True)
+        self.fileSystem.setRootPath(self.folder_path)
         self.fileSystem.setFilter(QDir.Filter.Dirs | QDir.Filter.NoDotAndDotDot)
         self.folders.setModel(self.fileSystem)
+        self.folders.setRootIndex(self.fileSystem.index(self.folder_path))
         self.folders.setHeaderHidden(True)
         for column in range(1, self.fileSystem.columnCount()):
             self.folders.setColumnHidden(column, True)
@@ -143,6 +146,11 @@ class MainWindow(QMainWindow):
     def add_folder(self):
         path = QFileDialog.getExistingDirectory(self, 
 			"Select Folder to Add to View", os.path.expanduser("~"))
+        target = self.folder_path + os.path.basename(path)
+        if os.path.exists(target):
+            self.status.showMessage(f"Folder already exists - {path}")
+            return
+        os.symlink(path, target, target_is_directory=True)
         self.status.showMessage(f"Added - {path}")
 
     def open_file(self):  # DEV
