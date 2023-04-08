@@ -1,0 +1,59 @@
+name: Mark latest release as main
+
+on: [push]
+
+jobs:
+  mark-latest-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+
+      - name: Install dependencies
+        run: |
+          pip install requests
+          pip install pygithub
+
+      - name: Mark latest release as main
+        run: |
+          import os
+          import requests
+          from github import Github
+
+          # Authenticate to GitHub
+          token = os.environ['GITHUB_TOKEN']
+          g = Github(token)
+
+          # Get the repository
+          repo = g.get_repo(os.environ['GITHUB_REPOSITORY'])
+
+          # Get all releases
+          releases = repo.get_releases()
+
+          # Find the latest release containing "main"
+          latest_release = None
+          latest_version = None
+          for release in releases:
+              if "main" in release.name:
+                  if latest_version is None or release.tag_name > latest_version:
+                      latest_release = release
+                      latest_version = release.tag_name
+
+          # Mark the latest release as "latest"
+          if latest_release is not None:
+              url = f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/releases/{latest_release.id}"
+              headers = {
+                  "Authorization": f"Bearer {token}",
+                  "Accept": "application/vnd.github.v3+json"
+              }
+              data = {"name": latest_release.name, "draft": False, "prerelease": False, "tag_name": latest_release.tag_name}
+              response = requests.patch(url, headers=headers, json=data)
+              if response.status_code == 200:
+                  print(f"Marked release {latest_release.tag_name} as latest")
+              else:
+                  print(f"Failed to mark release {latest_release.tag_name} as latest. Response: {response.text}")
