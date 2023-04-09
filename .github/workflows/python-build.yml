@@ -47,6 +47,10 @@ jobs:
       # id: extract_commit
       # shell: bash
       # run: echo "commits=$(( $(git rev-list --count $(git rev-parse --abbrev-ref HEAD)) + 1))" >>$GITHUB_OUTPUT
+    - name: Create Release Name
+      id: release_name
+      shell: powershell
+      run: echo "release=$(Get-Date -Format "ddMMyy-HHmm")" >> $GITHUB_OUTPUT
     - name: Create GitHub Release
       id: create_release
       uses: actions/create-release@v1
@@ -54,8 +58,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         # tag_name: ${{ steps.extract_branch.outputs.branch }}-0.${{ steps.extract_commit.outputs.commits }}
-        tag_name: ${{ steps.extract_branch.outputs.branch }}-$(Get-Date -Format "ddMMyy-HHmm")
-        release_name: ${{ steps.extract_branch.outputs.branch }}-0.$(Get-Date -Format "ddMMyy-HHmm")
+        tag_name: ${{ steps.extract_branch.outputs.branch }}-${{ steps.release_name.outputs.release }}
+        release_name: ${{ steps.extract_branch.outputs.branch }}-${{ steps.release_name.outputs.release }}
         draft: false
         prerelease: false
     - name: Upload Release Asset
@@ -65,5 +69,5 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: image-search.zip
-        asset_name: image-search-${{ steps.extract_branch.outputs.branch }}-0.$(Get-Date -Format "ddMMyy-HHmm").zip
+        asset_name: image-search-${{ steps.extract_branch.outputs.branch }}-${{ steps.release_name.outputs.release }}.zip
         asset_content_type: application/zip
