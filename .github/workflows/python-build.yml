@@ -49,8 +49,8 @@ jobs:
       # run: echo "commits=$(( $(git rev-list --count $(git rev-parse --abbrev-ref HEAD)) + 1))" >>$GITHUB_OUTPUT
     - name: Create Release Name
       id: release_name
-      shell: powershell
-      run: echo "release=$(Get-Date -Format "ddMMyy-HHmm")" >> $GITHUB_OUTPUT
+      shell: bash
+      run: echo "release=$(date +%d%m%Y-%H%M)" >> $GITHUB_OUTPUT
     - name: Create GitHub Release
       id: create_release
       uses: actions/create-release@v1
