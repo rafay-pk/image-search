@@ -158,15 +158,19 @@ class MainWindow(QMainWindow):
             button.setChecked(False)
             other.setChecked(True)
         if thumb:
-            self.browser_detailview.hide()
-            for i in range(self.browser_thumbnails.count()):
-                widget = self.browser_thumbnails.itemAt(i).widget()
-                widget.show()
+            self.browser_thumbnails.setEnabled(True)
+            self.browser_detailview.setEnabled(False)
+            # self.browser_detailview.hide()
+            # for i in range(self.browser_thumbnails.count()):
+            #     widget = self.browser_thumbnails.itemAt(i).widget()
+            #     widget.show()
         else:
-            self.browser_detailview.show()
-            for i in range(self.browser_thumbnails.count()):
-                widget = self.browser_thumbnails.itemAt(i).widget()
-                widget.hide()
+            self.browser_thumbnails.setEnabled(False)
+            self.browser_detailview.setEnabled(True)
+            # self.browser_detailview.show()
+            # for i in range(self.browser_thumbnails.count()):
+            #     widget = self.browser_thumbnails.itemAt(i).widget()
+            #     widget.hide()
         
     
     def add_folder(self):
@@ -177,7 +181,17 @@ class MainWindow(QMainWindow):
             self.status.showMessage(f"Folder already exists - {path}")
             return
         os.symlink(path, target, target_is_directory=True)
-        self.browser_detailview.addItems([os.path.join(root, f) for root, dir, file in os.walk(path) for f in file])
+        files = [os.path.join(root, f) for root, dir, file in os.walk(path) for f in file]
+        self.browser_detailview.addItems(files)
+        for i, file in enumerate(files):
+            widget = QWidget()
+            layout = QVBoxLayout()
+            thumbnail = QLabel()
+            thumbnail.setPixmap(QPixmap(file).scaledToWidth(200))
+            layout.addWidget(thumbnail)
+            layout.addWidget(QLabel(os.path.basename(file)))
+            widget.setLayout(layout)
+            self.browser_thumbnails.addWidget(widget, i // 4, i % 4)
         self.status.showMessage(f"Added - {path}")
 
     def show_media(self):
@@ -188,7 +202,7 @@ class MainWindow(QMainWindow):
             movie.start()
         else:
             pixmap = QPixmap(file_path)
-            self.media.setPixmap(pixmap)
+            self.media.setPixmap(pixmap.scaled(800, 600, Qt.AspectRatioMode.KeepAspectRatio))
 
     def search(self):
         self.status.showMessage(f"Searching - {self.search_bar.text()}")

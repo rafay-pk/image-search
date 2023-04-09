@@ -43,10 +43,6 @@ jobs:
       id: extract_branch
       shell: bash 
       run: echo "branch=$(echo $(git rev-parse --abbrev-ref HEAD))" >>$GITHUB_OUTPUT 
-    # - name: Extract Commit Number
-      # id: extract_commit
-      # shell: bash
-      # run: echo "commits=$(( $(git rev-list --count $(git rev-parse --abbrev-ref HEAD)) + 1))" >>$GITHUB_OUTPUT
     - name: Create Release Name
       id: release_name
       shell: bash
@@ -57,7 +53,6 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        # tag_name: ${{ steps.extract_branch.outputs.branch }}-0.${{ steps.extract_commit.outputs.commits }}
         tag_name: ${{ steps.extract_branch.outputs.branch }}-${{ steps.release_name.outputs.release }}
         release_name: ${{ steps.extract_branch.outputs.branch }}-${{ steps.release_name.outputs.release }}
         draft: false
