@@ -1,4 +1,4 @@
-import sys, os
+import sys, os, pathlib
 from PyQt6.QtCore import Qt, QSize, QDir, QSize
 from PyQt6.QtGui import QFileSystemModel, QPixmap, QMovie, QIcon,  QAction
 from PyQt6.QtWidgets import (
@@ -13,9 +13,10 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QTreeView,
-    QListView,
+    QListWidget,
     QDockWidget,
-    QToolBar
+    QToolBar,
+    QGridLayout
 )
 
 
@@ -53,12 +54,6 @@ class MainWindow(QMainWindow):
         self.action_about = self.menu_help.addAction("About Media Magic")
         self.action_about.setStatusTip("Know more about this software")
         self.action_about.triggered.connect(self.show_about)
-
-        # DEV
-        self.menu_dev = self.menu_bar.addMenu("Dev")
-        self.action_openFile = self.menu_dev.addAction("Open File")
-        self.action_openFile.triggered.connect(self.open_file)
-        # DEV
         # endregion
 
         # region Search Bar
@@ -86,6 +81,8 @@ class MainWindow(QMainWindow):
         self.dock_folders.setWidget(self.folders)
         self.fileSystem = QFileSystemModel()
         self.folder_path = os.getcwd().replace("\\", '/') + "/data/folders/"
+        import shutil
+        shutil.rmtree(self.folder_path) #DEV 
         os.makedirs(self.folder_path, exist_ok=True)
         self.fileSystem.setRootPath(self.folder_path)
         self.fileSystem.setFilter(QDir.Filter.Dirs | QDir.Filter.NoDotAndDotDot)
@@ -97,18 +94,28 @@ class MainWindow(QMainWindow):
         # endregion
        
         # region Browser View
-        self.browser = QListView()
+        self.browser_detailview = QListWidget()
+        self.browser_thumbnails = QGridLayout()
+        self.browser_detailview.itemSelectionChanged.connect(self.show_media)
+        browser = QWidget()
         browserToggles = QToolBar()
-        thumbs = QAction(QIcon("icons/thumbs.png"),"", self)
-        details = QAction(QIcon("icons/details.png"),"", self)
-        browserToggles.addAction(thumbs)
-        browserToggles.addAction(details)
-        browserToggles.widgetForAction(thumbs).setFixedSize(21,21)
-        browserToggles.widgetForAction(details).setFixedSize(21,21)
+        detailview = QAction(QIcon("icons/details.png"),"", self, checkable=True, checked=True)
+        thumbnails = QAction(QIcon("icons/thumbs.png"),"", self, checkable=True)
+        detailview.toggled.connect(lambda checked: self.toggle_view(detailview, thumbnails, checked, False))
+        thumbnails.toggled.connect(lambda checked: self.toggle_view(thumbnails, detailview, checked, True))
+        browserToggles.addAction(detailview)
+        browserToggles.addAction(thumbnails)
+        browserToggles.widgetForAction(detailview).setFixedSize(21,21)
+        browserToggles.widgetForAction(thumbnails).setFixedSize(21,21)
         browserToggles.setContentsMargins(0, 0, 0, 0)
         browserToggles.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         browserLayout = QVBoxLayout()
-        browserLayout.addWidget(self.browser)
+        browser.setLayout(browserLayout)
+        grid = QWidget()
+        grid.setLayout(self.browser_thumbnails)
+        browserLayout.addWidget(self.browser_detailview)
+        browserLayout.addWidget(grid)
+        # browserLayout.addLayout(self.browser_thumbnails)
         browserLayout.addWidget(browserToggles)
         browserLayout.setContentsMargins(0, 0, 0, 0)
         browserLayout.setSpacing(0)
@@ -143,6 +150,25 @@ class MainWindow(QMainWindow):
         self.show()
         # endregion
 
+    def toggle_view(self, button, other, checked, thumb):
+        if checked:
+            button.setChecked(True)
+            other.setChecked(False)
+        else:
+            button.setChecked(False)
+            other.setChecked(True)
+        if thumb:
+            self.browser_detailview.hide()
+            for i in range(self.browser_thumbnails.count()):
+                widget = self.browser_thumbnails.itemAt(i).widget()
+                widget.show()
+        else:
+            self.browser_detailview.show()
+            for i in range(self.browser_thumbnails.count()):
+                widget = self.browser_thumbnails.itemAt(i).widget()
+                widget.hide()
+        
+    
     def add_folder(self):
         path = QFileDialog.getExistingDirectory(self, 
 			"Select Folder to Add to View", os.path.expanduser("~"))
@@ -151,18 +177,18 @@ class MainWindow(QMainWindow):
             self.status.showMessage(f"Folder already exists - {path}")
             return
         os.symlink(path, target, target_is_directory=True)
+        self.browser_detailview.addItems([os.path.join(root, f) for root, dir, file in os.walk(path) for f in file])
         self.status.showMessage(f"Added - {path}")
 
-    def open_file(self):  # DEV
-        file_path, _ = QFileDialog.getOpenFileName(self, "Open Image", "")
-        if file_path:
-            if file_path.endswith(".gif") or file_path.endswith(".webp"):
-                movie = QMovie(file_path)
-                self.media.setMovie(movie)
-                movie.start()
-            else:
-                pixmap = QPixmap(file_path)
-                self.media.setPixmap(pixmap)
+    def show_media(self):
+        file_path = self.browser_detailview.currentItem().text()
+        if file_path.endswith(".gif") or file_path.endswith(".webp"):
+            movie = QMovie(file_path)
+            self.media.setMovie(movie)
+            movie.start()
+        else:
+            pixmap = QPixmap(file_path)
+            self.media.setPixmap(pixmap)
 
     def search(self):
         self.status.showMessage(f"Searching - {self.search_bar.text()}")
