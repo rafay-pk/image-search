@@ -1,0 +1,3 @@
+paths
+self.image = QPixmap(r'C:\Users\Rafay\OneDrive\data\sample.png')
+self.animated_image = QMovie(r'C:\Users\Rafay\OneDrive\data\sample2.webp')
