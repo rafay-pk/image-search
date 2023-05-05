@@ -40,8 +40,9 @@ class SQLiteDB:
                     self.execute_query(query)
 
     def execute_query(self, query):
-        self.cursor.execute(query)
-        self.conn.commit()
+        for q in query.split(";"):
+            self.cursor.execute(q) 
+            self.conn.commit()
 
     def fetch_data(self, query):
         self.cursor.execute(query)
@@ -55,6 +56,8 @@ class SQLiteDB:
 
 class MainWindow(QMainWindow):
     def __init__(self):
+
+        # region Setup
 
         self.filetype_switcher = {
             ".png": self.display_static,
@@ -78,13 +81,14 @@ class MainWindow(QMainWindow):
             ".webm": self.display_video,
             ".mpeg": self.display_video,
         }
-
-        # region Setup
+        
         super().__init__()
         self.setWindowTitle("Media Magic")
-        # self.db = SQLiteDB("data/database.db")
-        # self.db.execute_query_from_file("data/create_db.sql")
+        self.db = SQLiteDB("data/database.db")
+        self.db.execute_query_from_file("data/sql/create_db.sql")
         self.resize(QSize(800, 500))
+        self.status = QStatusBar(self)
+        self.setStatusBar(self.status)
         # endregion
 
         # region Menu Bar
@@ -118,7 +122,9 @@ class MainWindow(QMainWindow):
         # region Search Bar
         self.search_bar = QLineEdit()
         self.search_enter = QPushButton("Search")
-        self.search_enter.pressed.connect(self.search)
+        self.search_bar.returnPressed.connect(self.search_enter.pressed)
+        self.search_bar.setPlaceholderText(" -- Search multiple tags with spaces -- ")
+        self.search_enter.pressed.connect(lambda: self.search(self.search_bar.text()))
         searchLayout = QHBoxLayout()
         searchLayout.addWidget(self.search_bar)
         searchLayout.addWidget(self.search_enter)
@@ -150,24 +156,30 @@ class MainWindow(QMainWindow):
         self.folders.setHeaderHidden(True)
         for column in range(1, self.fileSystem.columnCount()):
             self.folders.setColumnHidden(column, True)
+        self.folders.setAnimated(True)
+        self.folders.setIndentation(10)
+        self.folders.setSortingEnabled(True)
+        self.folders.selectionModel().selectionChanged.connect(self.folder_selected)
         # endregion
        
         # region Browser View
         self.browser_detailview = QListWidget()
-        # self.browser_thumbnails = QGridLayout()
+        self.browser_thumbnails = QGridLayout()
         self.browser_detailview.itemSelectionChanged.connect(self.display_media)
         browser = QWidget()
-        # browserToggles = QToolBar()
-        # detailview = QAction(QIcon("icons/details.png"),"", self, checkable=True, checked=True)
-        # thumbnails = QAction(QIcon("icons/thumbs.png"),"", self, checkable=True)
-        # detailview.toggled.connect(lambda checked: self.toggle_view(detailview, thumbnails, checked, False))
-        # thumbnails.toggled.connect(lambda checked: self.toggle_view(thumbnails, detailview, checked, True))
-        # browserToggles.addAction(detailview)
-        # browserToggles.addAction(thumbnails)
-        # browserToggles.widgetForAction(detailview).setFixedSize(21,21)
-        # browserToggles.widgetForAction(thumbnails).setFixedSize(21,21)
-        # browserToggles.setContentsMargins(0, 0, 0, 0)
-        # browserToggles.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+
+        browserToggles = QToolBar()
+        detailview = QAction(QIcon("icons/details.png"),"", self, checkable=True, checked=True)
+        thumbnails = QAction(QIcon("icons/thumbs.png"),"", self, checkable=True)
+        detailview.toggled.connect(lambda checked: self.toggle_view(detailview, thumbnails, checked, False))
+        thumbnails.toggled.connect(lambda checked: self.toggle_view(thumbnails, detailview, checked, True))
+        browserToggles.addAction(detailview)
+        browserToggles.addAction(thumbnails)
+        browserToggles.widgetForAction(detailview).setFixedSize(21,21)
+        browserToggles.widgetForAction(thumbnails).setFixedSize(21,21)
+        browserToggles.setContentsMargins(0, 0, 0, 0)
+        browserToggles.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        
         browserLayout = QVBoxLayout()
         browser.setLayout(browserLayout)
         # grid = QWidget()
@@ -178,9 +190,11 @@ class MainWindow(QMainWindow):
         # scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         # scroll_area.setWidget(grid)
         browserLayout.addWidget(self.browser_detailview)
+
         # browserLayout.addWidget(scroll_area)
-        # browserLayout.addLayout(self.browser_thumbnails)
-        # browserLayout.addWidget(browserToggles)
+        browserLayout.addLayout(self.browser_thumbnails)
+        browserLayout.addWidget(browserToggles)
+        
         browserLayout.setContentsMargins(0, 0, 0, 0)
         browserLayout.setSpacing(0)
         self.browserView = QWidget()
@@ -191,6 +205,7 @@ class MainWindow(QMainWindow):
 
         # region Media View
         self.image = QLabel()
+        self.image.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.video = QVideoWidget()
         self.video.hide()
         mediaLayout = QVBoxLayout()
@@ -207,9 +222,28 @@ class MainWindow(QMainWindow):
         # endregion
 
         # region Tags View
-        self.tags = QListWidget()
         self.dock_tags = QDockWidget("Tags")
-        self.dock_tags.setWidget(self.tags)
+        self.tags = QListWidget()
+        tag_bar = QLineEdit()
+        btn_add_tag = QPushButton("Add Tag")
+        tagBarLayout = QHBoxLayout()
+        tagBarLayout.setContentsMargins(0, 0, 0, 0)
+        tagBarLayout.setSpacing(0)
+        tagBarLayout.addWidget(tag_bar)
+        tagBarLayout.addWidget(btn_add_tag)
+        tagBarWidget = QWidget()
+        tagBarWidget.setLayout(tagBarLayout)
+
+        btn_add_tag.pressed.connect(lambda: self.add_tag_to_file(tag_bar.text(), self.browser_detailview.currentItem().text()))
+        tag_bar.returnPressed.connect(btn_add_tag.pressed)
+        tag_view = QWidget()
+        tagLayout = QVBoxLayout()
+        tagLayout.addWidget(self.tags)
+        tagLayout.addWidget(tagBarWidget)
+        tagLayout.setContentsMargins(0, 0, 0, 0)
+        tagLayout.setSpacing(0)
+        tag_view.setLayout(tagLayout)
+        self.dock_tags.setWidget(tag_view)
         # endregion 
 
         # region Docking
@@ -224,29 +258,33 @@ class MainWindow(QMainWindow):
         # endregion
         
         # region Setup
-        self.status = QStatusBar(self)
-        self.setStatusBar(self.status)
         self.show()
         # endregion
 
-    # def toggle_view(self, button, other, checked, thumb):
-    #     if checked:
-    #         button.setChecked(True)
-    #         other.setChecked(False)
-    #     else:
-    #         button.setChecked(False)
-    #         other.setChecked(True)
-    #     if thumb:
-    #         self.browser_detailview.hide()
-    #         for i in range(self.browser_thumbnails.count()):
-    #             widget = self.browser_thumbnails.itemAt(i).widget()
-    #             widget.show()
-    #     else:
-    #         self.browser_detailview.show()
-    #         for i in range(self.browser_thumbnails.count()):
-    #             widget = self.browser_thumbnails.itemAt(i).widget()
-    #             widget.hide()
+    def toggle_view(self, button, other, checked, thumb):
+        if checked:
+            button.setChecked(True)
+            other.setChecked(False)
+        else:
+            button.setChecked(False)
+            other.setChecked(True)
+        # if thumb:
+        #     self.browser_detailview.hide()
+        #     for i in range(self.browser_thumbnails.count()):
+        #         widget = self.browser_thumbnails.itemAt(i).widget()
+        #         widget.show()
+        # else:
+        #     self.browser_detailview.show()
+        #     for i in range(self.browser_thumbnails.count()):
+        #         widget = self.browser_thumbnails.itemAt(i).widget()
+        #         widget.hide()
         
+    def folder_selected(self):
+        self.browser_detailview.clear()
+        for index in self.folders.selectedIndexes():
+            sym_path = self.fileSystem.filePath(index)
+            org_path = self.sql_get_files_in_folder(sym_path)
+            self.browser_detailview.addItems([os.path.join(root, f) for root, dir, file in os.walk(org_path) for f in file])
     
     def add_folder(self):
         path = QFileDialog.getExistingDirectory(self, 
@@ -258,6 +296,9 @@ class MainWindow(QMainWindow):
         os.symlink(path, target, target_is_directory=True)
         files = [os.path.join(root, f) for root, dir, file in os.walk(path) for f in file]
         self.browser_detailview.addItems(files)
+        self.browser_detailview.sortItems()
+        self.sql_add_folder(path, target)
+        self.sql_add_files(files)
         # for i, file in enumerate(files):
             # widget = QWidget()
             # layout = QVBoxLayout()
@@ -269,11 +310,31 @@ class MainWindow(QMainWindow):
             # self.browser_thumbnails.addWidget(widget, i // 4, i % 4)
         self.status.showMessage(f"Added - {path}")
 
+    # def update_size(self, event=None):
+        # self.image.setPixmap(QPixmap.fromImage(self.image.scaled(self.dock_media.size(), Qt.AspectRatioMode.KeepAspectRatio)))
+
+    def add_tag_to_file(self, tag, file):
+        self.sql_add_tag_to_file(tag, file)
+        self.tags.addItem(tag)
+
+    def search(self, tags):
+        tagList = list(set(tags.split(" ")))
+        self.status.showMessage(f"Searching for files with tags - {', '.join(tagList)}")
+        result = self.sql_search_inclusive(tagList)
+        print(result)
+
+    def show_about(self):
+        self.about = AboutWindow()
+        self.about.show()
+
+    # region Display Media
     def display_media(self):
         file_path = self.browser_detailview.currentItem().text()
         _, extension = os.path.splitext(file_path)
         if extension in self.filetype_switcher:
             self.filetype_switcher[extension](file_path)
+            self.tags.clear()
+            self.tags.addItems([x[0] for x in self.sql_get_file_tags(file_path)])
         else:
             self.status.showMessage(f"Unsupported file type - {extension}")
 
@@ -281,14 +342,14 @@ class MainWindow(QMainWindow):
         self.media_player.stop()
         self.image.show()
         self.video.hide()
-        self.image.setPixmap(QPixmap(file_path).scaled(self.dock_media.size() * 0.9, Qt.AspectRatioMode.KeepAspectRatio))
+        self.image.setPixmap(QPixmap(file_path).scaled(self.dock_media.size() * 0.95, Qt.AspectRatioMode.KeepAspectRatio))
     
     def display_animated(self, file_path):
         self.media_player.stop()
         self.image.show()
         self.video.hide()
         movie = QMovie(file_path)
-        movie.setScaledSize(QPixmap(file_path).scaled(self.dock_media.size() * 0.9, Qt.AspectRatioMode.KeepAspectRatio).size())
+        movie.setScaledSize(QPixmap(file_path).scaled(self.dock_media.size() * 0.95, Qt.AspectRatioMode.KeepAspectRatio).size())
         self.image.setMovie(movie)
         movie.start()
     
@@ -297,49 +358,48 @@ class MainWindow(QMainWindow):
         self.video.show()
         self.media_player.setSource(QUrl.fromLocalFile(file_path))
         self.media_player.play()
-
-    # def update_size(self, event=None):
-        # self.image.setPixmap(QPixmap.fromImage(self.image.scaled(self.dock_media.size(), Qt.AspectRatioMode.KeepAspectRatio)))
-
-    def search(self):
-        self.status.showMessage(f"Searching - {self.search_bar.text()}")
-
-    def show_about(self):
-        self.about = AboutWindow()
-        self.about.show()
+    # endregion
         
     # region SQL
-    def add_new_tag(self, tag):
-        self.db.execute_query(f"INSERT INTO Tags (name) VALUES ('{tag}')")
+    def sql_add_new_tag(self, tag):
+        self.db.execute_query(f"INSERT OR IGNORE INTO Tags (name) VALUES ('{tag}')")
 
-    def edit_tag(self, tag, new_tag):
+    def sql_edit_tag(self, tag, new_tag):
         self.db.execute_query(f"UPDATE Tags SET name = '{new_tag}' WHERE name = '{tag}'")
 
-    def delete_tag(self, tag):
+    def sql_delete_tag(self, tag):
         self.db.execute_query(f"DELETE FROM Tags WHERE name = '{tag}'")
         # Select id of that tag and then remove all filetags with that id
     
-    def add_file(self, file):
-        self.db.execute_query(f"INSERT INTO Files (path) VALUES ('{file}')")
+    def sql_add_folder(self, folder, sym_path):
+        self.db.execute_query(f"INSERT INTO Folders (org_path, sym_path) VALUES ('{folder}', '{sym_path}')")
+        # self.db.execute_query(f"INSERT INTO Folders (path) VALUES ('{folder}')")
 
-    def add_tag_to_file(self, tag, file):
-        query = f"""INSERT OR IGNORE INTO Tags (name) VALUES ('{tag}');
-                    INSERT INTO FileTags (file_id, tag_id) VALUES 
+    def sql_add_files(self, files):
+        for file in files:
+            self.db.execute_query(f"INSERT INTO Files (path) VALUES ('{file}')")
+
+    def sql_add_tag_to_file(self, tag, file):
+        self.sql_add_new_tag(tag)
+        query = f"""INSERT INTO FileTags (file_id, tag_id) VALUES 
                     (
                         (SELECT id FROM Files WHERE path = '{file}'),
                         (SELECT id FROM Tags WHERE name = '{tag}')
                     );"""
         self.db.execute_query(query)
 
-    def remove_tag_from_file(self, tag, file):
+    def sql_remove_tag_from_file(self, tag, file):
         query = f"""DELETE FROM FileTags WHERE file_id = (SELECT id FROM Files WHERE path = '{file}')
                     AND tag_id = (SELECT id FROM Tags WHERE name = '{tag}')"""
         self.db.execute_query(query)
     
-    def get_all_files(self):
+    def sql_get_all_files(self):
         return self.db.fetch_data("SELECT * FROM Files")
+    
+    def sql_get_files_in_folder(self, sym_path):
+        return self.db.fetch_data(f"SELECT f.org_path FROM Folders f WHERE sym_path = '{sym_path}'")[0][0]
 
-    def get_file_tags(self, file):
+    def sql_get_file_tags(self, file):
         query = f"""SELECT t.name FROM FileTags ft
                         JOIN Files f
                             ON ft.file_id = f.id 
@@ -348,7 +408,7 @@ class MainWindow(QMainWindow):
                         WHERE f.path = '{file}'"""
         return self.db.fetch_data(query)
     
-    def search(self, tags):
+    def sql_search_inclusive(self, tags):
         query = f"""SELECT DISTINCT f.path FROM Files f
                         JOIN FileTags ft
                             ON f.id = ft.file_id
