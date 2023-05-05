@@ -1,5 +1,5 @@
 import sys, os, pathlib, sqlite3
-from PyQt6.QtCore import Qt, QSize, QDir, QSize, QUrl, QStringListModel, QItemSelectionModel, QSortFilterProxyModel
+from PyQt6.QtCore import Qt, QSize, QDir, QSize, QUrl, QStringListModel, QItemSelectionModel, QSortFilterProxyModel, QModelIndex
 from PyQt6.QtGui import QFileSystemModel, QPixmap, QMovie, QIcon,  QAction, QImage, QStandardItemModel, QStandardItem
 from PyQt6.QtMultimedia import QMediaPlayer
 from PyQt6.QtMultimediaWidgets import QVideoWidget
@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QSplitter,
     QAbstractItemView,
-    QListView,
+    QListView,  
 )
 
 
@@ -56,9 +56,25 @@ class SQLiteDB:
         self.conn.close()
 
 class QDeselectableTreeView(QTreeView):
+    # def __init__(self, parent=None):
+        # super().__init__(parent)
+        # self.other_func = lambda: None
+
     def mousePressEvent(self, event):
         self.clearSelection()
         QTreeView.mousePressEvent(self, event)
+        # self.other_func()
+    
+    # def setOtherFunction(self, func):
+        # self.other_func = func
+
+# class QCStandardItemModel(QStandardItemModel):
+#     def rowCount(self, parent=QModelIndex()):
+#         return 20000
+
+# class QCSortFilterProxyModel(QSortFilterProxyModel):
+#     def rowCount(self, parent=QModelIndex()):
+#         return 20000
 
 class QDetailListView(QListView):
     def __init__(self, parent=None):
@@ -73,11 +89,15 @@ class QDetailListView(QListView):
         self.sort_proxy_model.setSourceModel(self.model)
         self.sort_proxy_model.setSortRole(Qt.ItemDataRole.DisplayRole)
         self.sort_proxy_model.sort(0, Qt.SortOrder.AscendingOrder)
+        self.setBatchSize(2000)
         
         self.setModel(self.sort_proxy_model)
         
         self.items = set()
-        
+    
+    def get_len(self):
+        return len(self.items)
+
     def setSelectionChangedFunction(self, func):
         self.selectionModel().selectionChanged.connect(func)
     
@@ -167,10 +187,15 @@ class MainWindow(QMainWindow):
         self.search_bar = QLineEdit()
         self.search_enter = QPushButton("Search")
         self.search_bar.returnPressed.connect(self.search_enter.pressed)
-        self.search_bar.setPlaceholderText(" -- Search multiple tags with spaces -- ")
+        self.search_bar.setPlaceholderText(" -- Search multiple tags with spaces -- Press Esc to focus")
         self.search_enter.pressed.connect(lambda: self.search(self.search_bar.text()))
+        self.clear_btn = QPushButton()
+        self.clear_btn.setIcon(QIcon("icons/clear.png"))
+        self.clear_btn.setShortcut("Esc")
+        self.clear_btn.pressed.connect(self.clear)
         searchLayout = QHBoxLayout()
         searchLayout.addWidget(self.search_bar)
+        searchLayout.addWidget(self.clear_btn)
         searchLayout.addWidget(self.search_enter)
         searchLayout.setContentsMargins(0, 0, 0, 0)
         searchLayout.setSpacing(0)
@@ -186,6 +211,7 @@ class MainWindow(QMainWindow):
         
         # region Folder View
         self.folders = QDeselectableTreeView()
+        # self.folders.setOtherFunction(lambda: self.)
         self.dock_folders = QDockWidget("Folders")
         self.dock_folders.setWidget(self.folders)
         self.fileSystem = QFileSystemModel()
@@ -211,7 +237,6 @@ class MainWindow(QMainWindow):
         self.browser_detailView = QDetailListView()
         self.browser_thumbnails = QGridLayout()
         self.browser_detailView.setSelectionChangedFunction(self.display_media)
-        # self.browser_detailView.selectionModel().selectionChanged.connect(self.display_media)
         browser = QWidget()
 
         browserToggles = QToolBar()
@@ -263,6 +288,7 @@ class MainWindow(QMainWindow):
         self.dock_media = QDockWidget("Media")
         self.dock_media.setWidget(media_view)
         self.media_player = QMediaPlayer()
+        self.media_player.setLoops(-1)
         self.media_player.setVideoOutput(self.video)
         # self.resizeEvent = self.update_size
         # endregion
@@ -270,18 +296,23 @@ class MainWindow(QMainWindow):
         # region Tags View
         self.dock_tags = QDockWidget("Tags")
         self.tags = QListWidget()
-        tag_bar = QLineEdit()
+        self.tag_bar = QLineEdit()
+        self.tag_bar.setPlaceholderText("Press Ctrl+T to focus")
         btn_add_tag = QPushButton("Add Tag")
         tagBarLayout = QHBoxLayout()
         tagBarLayout.setContentsMargins(0, 0, 0, 0)
         tagBarLayout.setSpacing(0)
-        tagBarLayout.addWidget(tag_bar)
+        tagBarLayout.addWidget(self.tag_bar)
         tagBarLayout.addWidget(btn_add_tag)
         tagBarWidget = QWidget()
         tagBarWidget.setLayout(tagBarLayout)
-
-        btn_add_tag.pressed.connect(lambda: self.add_tag_to_file(tag_bar.text(), self.browser_detailView.currentItem().text()))
-        tag_bar.returnPressed.connect(btn_add_tag.pressed)
+        btn_add_tag.pressed.connect(lambda: self.add_tag_to_file(self.tag_bar.text(), self.browser_detailView.get_selected_text()))
+        self.tag_bar.returnPressed.connect(btn_add_tag.pressed)
+        self.tag_bar_shortcut = QPushButton()
+        self.tag_bar_shortcut.setShortcut("Ctrl+T")
+        self.tag_bar_shortcut.pressed.connect(lambda: self.tag_bar.setFocus())
+        tagBarLayout.addWidget(self.tag_bar_shortcut)
+        self.tag_bar_shortcut.setFixedSize(0,0)
         tag_view = QWidget()
         tagLayout = QVBoxLayout()
         tagLayout.addWidget(self.tags)
@@ -309,6 +340,16 @@ class MainWindow(QMainWindow):
         # endregion
 
     # region Mechanics
+    def clear(self):
+        self.search_bar.clear()
+        self.tag_bar.clear()
+        self.search_bar.setFocus()
+        self.folders.clearSelection()
+        self.folder_selected()
+
+    def update_title(self, title):
+        self.dock_browser.setWindowTitle(f'{title} - {self.browser_detailView.get_len()} items')
+
     def toggle_view(self, button, other, checked, thumb):
         if checked:
             button.setChecked(True)
@@ -330,16 +371,14 @@ class MainWindow(QMainWindow):
     def folder_selected(self):
         self.browser_detailView.clear()
         if len(self.folders.selectedIndexes()) == 0:
-            self.browser_detailView.add_strings([result_row[1] for result_row in self.sql_get_all_files()])
-            self.dock_browser.setObjectName("Browser")
+            self.browser_detailView.add_strings(self.sql_get_all_files())
+            self.update_title("Browser")
         else:
             for index in self.folders.selectedIndexes():
                 sym_path = self.fileSystem.filePath(index)
                 org_path = self.sql_get_files_in_folder(sym_path)
                 self.browser_detailView.add_strings([f'{self.file_op(root)}/{f}' for root, dir, file in os.walk(org_path) for f in file])
-        # self.browser_detailView.sortItems()
-        # self.browser_detailView.setModel(QStringListModel(set([self.browser_detailView.item(i).text() for i in range(self.browser_detailView.count())])))
-        # set(self.browser_detailView.items())
+            self.update_title(self.folders.selectedIndexes()[0].data())
 
     def file_op(self, f):
         return f.replace('\\', '/')
@@ -354,8 +393,6 @@ class MainWindow(QMainWindow):
         os.symlink(path, target, target_is_directory=True)
         files = [f'{self.file_op(root)}/{f}' for root, dir, file in os.walk(path) for f in file]
         self.browser_detailView.add_strings(files)
-        # self.browser_detailView.addItems(files)
-        # self.browser_detailView.sortItems()
         self.sql_add_folder(path, target)
         for subfolder in [f'{root}/{d}'[len(path) + 1:].replace('\\', '/') for root, dirs, files in os.walk(path) for d in dirs]:
             self.sql_add_folder(f'{path}/{subfolder}', f'{target}/{subfolder}')
@@ -371,18 +408,18 @@ class MainWindow(QMainWindow):
             # self.browser_thumbnails.addWidget(widget, i // 4, i % 4)
         self.status.showMessage(f"Added - {path}")
 
-    # def update_size(self, event=None):
-        # self.image.setPixmap(QPixmap.fromImage(self.image.scaled(self.dock_media.size(), Qt.AspectRatioMode.KeepAspectRatio)))
-
     def add_tag_to_file(self, tag, file):
         self.sql_add_tag_to_file(tag, file)
         self.tags.addItem(tag)
+        self.status.showMessage(f"Added tag - {tag} to file - {file}")
 
     def search(self, tags):
         tagList = list(set(tags.split(" ")))
-        self.status.showMessage(f"Searching for files with tags - {', '.join(tagList)}")
-        result = self.sql_search_inclusive(tagList)
-        print(result)
+        tagString = ', '.join(tagList)
+        self.status.showMessage(f"Searching for files with tags - {tagString}")
+        self.browser_detailView.clear()
+        self.browser_detailView.add_strings(self.sql_search_inclusive(tagList))
+        self.update_title(tagString)
 
     def show_about(self):
         self.about = AboutWindow()
@@ -455,7 +492,7 @@ class MainWindow(QMainWindow):
         self.db.execute_query(query)
     
     def sql_get_all_files(self):
-        return self.db.fetch_data("SELECT * FROM Files")
+        return [x[1] for x in self.db.fetch_data("SELECT * FROM Files")]
     
     def sql_get_files_in_folder(self, sym_path):
         return self.db.fetch_data(f"SELECT f.org_path FROM Folders f WHERE sym_path = '{sym_path}'")[0][0]
@@ -478,7 +515,7 @@ class MainWindow(QMainWindow):
                         WHERE t.name = '{tags[0]}'"""
         for tag in tags[1:]:
             query += f" OR t.name = '{tag}'"
-        return self.db.fetch_data(query)
+        return [x[0] for x in self.db.fetch_data(query)]
     # endregion
 
 class AboutWindow(QWidget):
