@@ -216,8 +216,8 @@ class MainWindow(QMainWindow):
         self.dock_folders.setWidget(self.folders)
         self.fileSystem = QFileSystemModel()
         self.folder_path = os.getcwd().replace("\\", '/') + "/data/folders/"
-        import shutil
-        shutil.rmtree(self.folder_path) #DEV 
+        # import shutil
+        # shutil.rmtree(self.folder_path) #DEV 
         os.makedirs(self.folder_path, exist_ok=True)
         self.fileSystem.setRootPath(self.folder_path)
         self.fileSystem.setFilter(QDir.Filter.Dirs | QDir.Filter.NoDotAndDotDot)
