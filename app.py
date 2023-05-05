@@ -1,4 +1,4 @@
-import sys, os, pathlib
+import sys, os, pathlib, sqlite3
 from PyQt6.QtCore import Qt, QSize, QDir, QSize, QUrl
 from PyQt6.QtGui import QFileSystemModel, QPixmap, QMovie, QIcon,  QAction, QImage
 from PyQt6.QtMultimedia import QMediaPlayer
@@ -22,6 +22,35 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QSplitter
 )
+
+
+class SQLiteDB:
+    def __init__(self, db_path):
+        self.conn = sqlite3.connect(db_path)
+        self.cursor = self.conn.cursor()
+    
+    def execute_query_from_file(self, file_path):
+        if not os.path.isfile(file_path):
+            raise ValueError("File path is not valid.")
+        with open(file_path, "r") as f:
+            queries = f.read().split(";")
+            for query in queries:
+                query = query.strip()
+                if query:
+                    self.execute_query(query)
+
+    def execute_query(self, query):
+        self.cursor.execute(query)
+        self.conn.commit()
+
+    def fetch_data(self, query):
+        self.cursor.execute(query)
+        data = self.cursor.fetchall()
+        return data
+
+    def close_connection(self):
+        self.cursor.close()
+        self.conn.close()
 
 
 class MainWindow(QMainWindow):
@@ -53,6 +82,8 @@ class MainWindow(QMainWindow):
         # region Setup
         super().__init__()
         self.setWindowTitle("Media Magic")
+        # self.db = SQLiteDB("data/database.db")
+        # self.db.execute_query_from_file("data/create_db.sql")
         self.resize(QSize(800, 500))
         # endregion
 
@@ -165,7 +196,6 @@ class MainWindow(QMainWindow):
         mediaLayout = QVBoxLayout()
         mediaLayout.addWidget(self.image)
         mediaLayout.addWidget(self.video)
-        mediaLayout.addWidget(QLabel("Tags and Values", alignment=Qt.AlignmentFlag.AlignCenter))
         mediaLayout.setContentsMargins(0, 0, 0, 0)
         media_view = QWidget()
         media_view.setLayout(mediaLayout)
@@ -173,20 +203,24 @@ class MainWindow(QMainWindow):
         self.dock_media.setWidget(media_view)
         self.media_player = QMediaPlayer()
         self.media_player.setVideoOutput(self.video)
-        self.resizeEvent = self.update_size
+        # self.resizeEvent = self.update_size
         # endregion
+
+        # region Tags View
+        self.tags = QListWidget()
+        self.dock_tags = QDockWidget("Tags")
+        self.dock_tags.setWidget(self.tags)
+        # endregion 
 
         # region Docking
         self.addDockWidget(Qt.DockWidgetArea.TopDockWidgetArea, self.dock_search)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.dock_folders)
         self.splitDockWidget(self.dock_folders, self.dock_browser, Qt.Orientation.Horizontal)
         self.splitDockWidget(self.dock_browser, self.dock_media, Qt.Orientation.Horizontal)
+        self.splitDockWidget(self.dock_media, self.dock_tags, Qt.Orientation.Vertical)
         self.dock_folders.setMinimumWidth(150)
         self.dock_browser.setMinimumWidth(300)
         # self.dock_media.setMinimumWidth(200)
-        for x in self.findChildren(QSplitter):
-            x.splitterMoved.connect(self.update_size)
-        self.image_src = QImage()
         # endregion
         
         # region Setup
@@ -247,21 +281,16 @@ class MainWindow(QMainWindow):
         self.media_player.stop()
         self.image.show()
         self.video.hide()
-        # use qimage to display a pixmap scaled to the width of the dock
-        self.image_src = QImage(file_path)
-        self.image.setPixmap(QPixmap.fromImage(self.image_src.scaled(self.dock_media.size(),Qt.AspectRatioMode.KeepAspectRatio)))
-
-        # pixmap = QPixmap(file_path)
-        # self.image.setPixmap(pixmap.scaled(self.dock_media.width(), 500, Qt.AspectRatioMode.KeepAspectRatio))
+        self.image.setPixmap(QPixmap(file_path).scaled(self.dock_media.size() * 0.9, Qt.AspectRatioMode.KeepAspectRatio))
     
     def display_animated(self, file_path):
         self.media_player.stop()
         self.image.show()
         self.video.hide()
         movie = QMovie(file_path)
+        movie.setScaledSize(QPixmap(file_path).scaled(self.dock_media.size() * 0.9, Qt.AspectRatioMode.KeepAspectRatio).size())
         self.image.setMovie(movie)
         movie.start()
-        self.image.setPixmap(self.image.pixmap().scaled(self.dock_media.width(), 500, Qt.AspectRatioMode.KeepAspectRatio))
     
     def display_video(self, file_path):
         self.image.hide()
@@ -269,8 +298,8 @@ class MainWindow(QMainWindow):
         self.media_player.setSource(QUrl.fromLocalFile(file_path))
         self.media_player.play()
 
-    def update_size(self, event=None):
-        self.image.setPixmap(QPixmap.fromImage(self.image_src.scaled(self.dock_media.size(),Qt.AspectRatioMode.KeepAspectRatio)))
+    # def update_size(self, event=None):
+        # self.image.setPixmap(QPixmap.fromImage(self.image.scaled(self.dock_media.size(), Qt.AspectRatioMode.KeepAspectRatio)))
 
     def search(self):
         self.status.showMessage(f"Searching - {self.search_bar.text()}")
@@ -278,7 +307,58 @@ class MainWindow(QMainWindow):
     def show_about(self):
         self.about = AboutWindow()
         self.about.show()
+        
+    # region SQL
+    def add_new_tag(self, tag):
+        self.db.execute_query(f"INSERT INTO Tags (name) VALUES ('{tag}')")
 
+    def edit_tag(self, tag, new_tag):
+        self.db.execute_query(f"UPDATE Tags SET name = '{new_tag}' WHERE name = '{tag}'")
+
+    def delete_tag(self, tag):
+        self.db.execute_query(f"DELETE FROM Tags WHERE name = '{tag}'")
+        # Select id of that tag and then remove all filetags with that id
+    
+    def add_file(self, file):
+        self.db.execute_query(f"INSERT INTO Files (path) VALUES ('{file}')")
+
+    def add_tag_to_file(self, tag, file):
+        query = f"""INSERT OR IGNORE INTO Tags (name) VALUES ('{tag}');
+                    INSERT INTO FileTags (file_id, tag_id) VALUES 
+                    (
+                        (SELECT id FROM Files WHERE path = '{file}'),
+                        (SELECT id FROM Tags WHERE name = '{tag}')
+                    );"""
+        self.db.execute_query(query)
+
+    def remove_tag_from_file(self, tag, file):
+        query = f"""DELETE FROM FileTags WHERE file_id = (SELECT id FROM Files WHERE path = '{file}')
+                    AND tag_id = (SELECT id FROM Tags WHERE name = '{tag}')"""
+        self.db.execute_query(query)
+    
+    def get_all_files(self):
+        return self.db.fetch_data("SELECT * FROM Files")
+
+    def get_file_tags(self, file):
+        query = f"""SELECT t.name FROM FileTags ft
+                        JOIN Files f
+                            ON ft.file_id = f.id 
+                        JOIN Tags t 
+                            ON ft.tag_id = t.id 
+                        WHERE f.path = '{file}'"""
+        return self.db.fetch_data(query)
+    
+    def search(self, tags):
+        query = f"""SELECT DISTINCT f.path FROM Files f
+                        JOIN FileTags ft
+                            ON f.id = ft.file_id
+                        JOIN Tags t
+                            ON ft.tag_id = t.id
+                        WHERE t.name = '{tags[0]}'"""
+        for tag in tags[1:]:
+            query += f" OR t.name = '{tag}'"
+        return self.db.fetch_data(query)
+    # endregion
 
 class AboutWindow(QWidget):
     def __init__(self):
