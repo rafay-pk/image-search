@@ -1,90 +1,146 @@
-import sys
-from PyQt6.QtCore import Qt, QModelIndex, QSortFilterProxyModel
-from PyQt6.QtGui import QStandardItemModel, QStandardItem
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QPushButton, QListView
+from PyQt6.QtGui import *
+from PyQt6.QtWidgets import *
+from PyQt6.QtCore import *
 
-class QDetailListView(QListView):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        
-        self.setSelectionMode(QListView.SelectionMode.SingleSelection)
-        
-        self.model = QStandardItemModel()
-        self.setModel(self.model)
-        
-        self.sort_proxy_model = QSortFilterProxyModel()
-        self.sort_proxy_model.setSourceModel(self.model)
-        self.sort_proxy_model.setSortRole(Qt.ItemDataRole.DisplayRole)
-        self.sort_proxy_model.sort(0, Qt.SortOrder.AscendingOrder)
-        
-        self.setModel(self.sort_proxy_model)
-        
-        self.items = set()
-        
-    def setSelectionChangedFunction(self, func):
-        self.selectionModel().selectionChanged.connect(func)
-    
-    def add_strings(self, string_list):
-        for string in [s for s in string_list if s not in self.items]:
-            self.items.add(string)
-            self.model.appendRow(QStandardItem(string))
-    
-    def clear(self):
-        self.model.clear()
-        self.items.clear()
+import time
+import traceback, sys
+
+
+class WorkerSignals(QObject):
+    '''
+    Defines the signals available from a running worker thread.
+
+    Supported signals are:
+
+    finished
+        No data
+
+    error
+        tuple (exctype, value, traceback.format_exc() )
+
+    result
+        object data returned from processing, anything
+
+    progress
+        int indicating % progress
+
+    '''
+    finished = pyqtSignal()
+    error = pyqtSignal(tuple)
+    result = pyqtSignal(object)
+    progress = pyqtSignal(int)
+
+
+class Worker(QRunnable):
+    '''
+    Worker thread
+
+    Inherits from QRunnable to handler worker thread setup, signals and wrap-up.
+
+    :param callback: The function callback to run on this worker thread. Supplied args and
+                     kwargs will be passed through to the runner.
+    :type callback: function
+    :param args: Arguments to pass to the callback function
+    :param kwargs: Keywords to pass to the callback function
+
+    '''
+
+    def __init__(self, fn, *args, **kwargs):
+        super(Worker, self).__init__()
+
+        # Store constructor arguments (re-used for processing)
+        self.fn = fn
+        self.args = args
+        self.kwargs = kwargs
+        self.signals = WorkerSignals()
+
+        # Add the callback to our kwargs
+        self.kwargs['progress_callback'] = self.signals.progress
+
+    @pyqtSlot()
+    def run(self):
+        '''
+        Initialise the runner function with passed args, kwargs.
+        '''
+
+        # Retrieve args/kwargs here; and fire processing using them
+        try:
+            result = self.fn(*self.args, **self.kwargs)
+        except:
+            traceback.print_exc()
+            exctype, value = sys.exc_info()[:2]
+            self.signals.error.emit((exctype, value, traceback.format_exc()))
+        else:
+            self.signals.result.emit(result)  # Return the result of the processing
+        finally:
+            self.signals.finished.emit()  # Done
+
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.initUI()
-    
-    def initUI(self):
-        self.setWindowTitle("Detail List View Example")
-        self.setGeometry(100, 100, 500, 500)
-        
-        # create a central widget and layout
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
+
+
+    def __init__(self, *args, **kwargs):
+        super(MainWindow, self).__init__(*args, **kwargs)
+
+        self.counter = 0
+
         layout = QVBoxLayout()
-        central_widget.setLayout(layout)
-        
-        # create the DetailListView object
-        self.browser_detailView = DetailListView(self)
-        
-        # set the data of the DetailListView to an initial set of strings
-        # data_set = {"apple", "banana", "orange", "pear"}
-        # self.browser_detailView.set_data(data_set)
-        
-        # create a button to add strings to the DetailListView
-        add_button = QPushButton("Add Strings")
-        add_button.clicked.connect(self.add_strings)
-        
-        # create a button to clear the contents of the DetailListView
-        clear_button = QPushButton("Clear")
-        clear_button.clicked.connect(self.browser_detailView.clear)
-        
-        # add the DetailListView and buttons to the layout
-        layout.addWidget(self.browser_detailView)
-        layout.addWidget(add_button)
-        layout.addWidget(clear_button)
-        self.x = 0
+
+        self.l = QLabel("Start")
+        b = QPushButton("DANGER!")
+        b.pressed.connect(self.oh_no)
+
+        layout.addWidget(self.l)
+        layout.addWidget(b)
+
+        w = QWidget()
+        w.setLayout(layout)
+
+        self.setCentralWidget(w)
+
         self.show()
-    
-    def add_strings(self):
-        # create a large list of unique strings
-        if self.x == 0:
-            string_list = ["apple", "banana", "orange", "kiwi"]
-        else:
-            string_list = ["apple", "banana", "ass", "kiwi"]
 
-        
-        # add the list of strings to the DetailListView
-        self.browser_detailView.add_strings(string_list)
-        self.x += 1
+        self.threadpool = QThreadPool()
+        print("Multithreading with maximum %d threads" % self.threadpool.maxThreadCount())
 
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec())
+        self.timer = QTimer()
+        self.timer.setInterval(1000)
+        self.timer.timeout.connect(self.recurring_timer)
+        self.timer.start()
+
+    def progress_fn(self, n):
+        print("%d%% done" % n)
+
+    def execute_this_fn(self, progress_callback):
+        for n in range(0, 5):
+            time.sleep(1)
+            progress_callback.emit(n*100/4)
+
+        return "Done."
+
+    def print_output(self, s):
+        print(s)
+
+    def thread_complete(self):
+        print("THREAD COMPLETE!")
+
+    def oh_no(self):
+        # Pass the function to execute
+        worker = Worker(self.execute_this_fn) # Any other args, kwargs are passed to the run function
+        worker.signals.result.connect(self.print_output)
+        worker.signals.finished.connect(self.thread_complete)
+        worker.signals.progress.connect(self.progress_fn)
+
+        # Execute
+        self.threadpool.start(worker)
+
+
+    def recurring_timer(self):
+        self.counter +=1
+        self.l.setText("Counter: %d" % self.counter)
+
+
+app = QApplication([])
+window = MainWindow()
+app.exec()

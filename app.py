@@ -1,4 +1,4 @@
-import sys, os, pathlib, sqlite3
+import sys, os, pathlib, sqlite3, face_recognition, threading
 from PyQt6.QtCore import Qt, QSize, QDir, QSize, QUrl, QStringListModel, QItemSelectionModel, QSortFilterProxyModel, QModelIndex
 from PyQt6.QtGui import QFileSystemModel, QPixmap, QMovie, QIcon,  QAction, QImage, QStandardItemModel, QStandardItem
 from PyQt6.QtMultimedia import QMediaPlayer
@@ -22,13 +22,14 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QSplitter,
     QAbstractItemView,
-    QListView,  
+    QListView,
+    QMenu
 )
 
 
 class SQLiteDB:
     def __init__(self, db_path):
-        self.conn = sqlite3.connect(db_path)
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.cursor = self.conn.cursor()
     
     def execute_query_from_file(self, file_path):
@@ -193,10 +194,13 @@ class MainWindow(QMainWindow):
         self.clear_btn.setIcon(QIcon("icons/clear.png"))
         self.clear_btn.setShortcut("Esc")
         self.clear_btn.pressed.connect(self.clear)
+        # self.ai_process_btn = QPushButton("AI Process")
+        # self.ai_process_btn.pressed.connect(self.ai_process)
         searchLayout = QHBoxLayout()
         searchLayout.addWidget(self.search_bar)
         searchLayout.addWidget(self.clear_btn)
         searchLayout.addWidget(self.search_enter)
+        # searchLayout.addWidget(self.ai_process_btn)
         searchLayout.setContentsMargins(0, 0, 0, 0)
         searchLayout.setSpacing(0)
         searchBar = QWidget()
@@ -231,6 +235,8 @@ class MainWindow(QMainWindow):
         self.folders.setSortingEnabled(True)
         self.folders.selectionModel().selectionChanged.connect(self.folder_selected)
         self.folders.setSelectionMode(QAbstractItemView.SelectionMode.ContiguousSelection)
+        self.folders.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.folders.customContextMenuRequested.connect(self.folder_context_menu)
         # endregion
        
         # region Browser View
@@ -340,6 +346,13 @@ class MainWindow(QMainWindow):
         # endregion
 
     # region Mechanics
+    def folder_context_menu(self, pos):
+        menu = QMenu()
+        action1 = QAction("Process Folder", self)
+        action1.triggered.connect(self.ai_process_folder_start)
+        menu.addAction(action1)
+        menu.exec(self.folders.viewport().mapToGlobal(pos))
+
     def clear(self):
         self.search_bar.clear()
         self.tag_bar.clear()
@@ -421,6 +434,35 @@ class MainWindow(QMainWindow):
         self.browser_detailView.add_strings(self.sql_search_inclusive(tagList))
         self.update_title(tagString)
 
+    # def ai_process(self):
+    #     path = self.browser_detailView.get_selected_text()
+    #     self.status.showMessage(f"AI Processing {path} - Started")
+    #     _, extension = os.path.splitext(path)
+    #     if self.filetype_switcher[extension].__name__ != self.display_static.__name__:
+    #         self.status.showMessage(f"AI Processing - Unsupported file type - {extension}")
+    #     else:
+    #         image = face_recognition.load_image_file(path)
+    #         face_locations = face_recognition.face_locations(image)
+    #         print(face_locations)
+    #         self.status.showMessage("AI Processing - Finished")
+
+    def ai_process_folder_start(self):
+        thread = threading.Thread(target=self.ai_process_folder)
+        thread.start()
+    
+    def ai_process_folder(self):
+        for index in self.folders.selectedIndexes():
+            sym_path = self.fileSystem.filePath(index)
+            org_path = self.sql_get_files_in_folder(sym_path)
+            for file in [f'{self.file_op(root)}/{f}' for root, dir, file in os.walk(org_path) for f in file]:
+                self.status.showMessage(f"AI Processing - {file}")
+                _, extension = os.path.splitext(file)
+                if self.filetype_switcher[extension].__name__ != self.display_static.__name__:
+                    continue
+                image = face_recognition.load_image_file(file)
+                print(face_recognition.face_encodings(image, num_jitters=5, model="large"))
+        self.status.showMessage(f"AI Processing - {org_path} - Finished")
+        
     def show_about(self):
         self.about = AboutWindow()
         self.about.show()
