@@ -1,6 +1,6 @@
 import sys, os, pathlib, sqlite3
-from PyQt6.QtCore import Qt, QSize, QDir, QSize, QUrl
-from PyQt6.QtGui import QFileSystemModel, QPixmap, QMovie, QIcon,  QAction, QImage
+from PyQt6.QtCore import Qt, QSize, QDir, QSize, QUrl, QStringListModel, QItemSelectionModel, QSortFilterProxyModel
+from PyQt6.QtGui import QFileSystemModel, QPixmap, QMovie, QIcon,  QAction, QImage, QStandardItemModel, QStandardItem
 from PyQt6.QtMultimedia import QMediaPlayer
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtWidgets import (
@@ -20,7 +20,9 @@ from PyQt6.QtWidgets import (
     QToolBar,
     QGridLayout,
     QScrollArea,
-    QSplitter
+    QSplitter,
+    QAbstractItemView,
+    QListView,
 )
 
 
@@ -53,6 +55,48 @@ class SQLiteDB:
         self.cursor.close()
         self.conn.close()
 
+class QDeselectableTreeView(QTreeView):
+    def mousePressEvent(self, event):
+        self.clearSelection()
+        QTreeView.mousePressEvent(self, event)
+
+class QDetailListView(QListView):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self.setSelectionMode(QListView.SelectionMode.SingleSelection)
+        
+        self.model = QStandardItemModel()
+        self.setModel(self.model)
+        
+        self.sort_proxy_model = QSortFilterProxyModel()
+        self.sort_proxy_model.setSourceModel(self.model)
+        self.sort_proxy_model.setSortRole(Qt.ItemDataRole.DisplayRole)
+        self.sort_proxy_model.sort(0, Qt.SortOrder.AscendingOrder)
+        
+        self.setModel(self.sort_proxy_model)
+        
+        self.items = set()
+        
+    def setSelectionChangedFunction(self, func):
+        self.selectionModel().selectionChanged.connect(func)
+    
+    def get_selected_text(self):
+        index = self.currentIndex()
+        if index.isValid():
+            item = self.model.itemFromIndex(self.sort_proxy_model.mapToSource(index))
+            return item.text()
+        else:
+            return None
+
+    def add_strings(self, string_list):
+        for string in [s for s in string_list if s not in self.items]:
+            self.items.add(string)
+            self.model.appendRow(QStandardItem(string))
+    
+    def clear(self):
+        self.model.clear()
+        self.items.clear()
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -83,7 +127,7 @@ class MainWindow(QMainWindow):
         }
         
         super().__init__()
-        self.setWindowTitle("Media Magic")
+        self.setWindowTitle("Image Search")
         self.db = SQLiteDB("data/database.db")
         self.db.execute_query_from_file("data/sql/create_db.sql")
         self.resize(QSize(800, 500))
@@ -141,7 +185,7 @@ class MainWindow(QMainWindow):
         # endregion
         
         # region Folder View
-        self.folders = QTreeView()
+        self.folders = QDeselectableTreeView()
         self.dock_folders = QDockWidget("Folders")
         self.dock_folders.setWidget(self.folders)
         self.fileSystem = QFileSystemModel()
@@ -160,12 +204,14 @@ class MainWindow(QMainWindow):
         self.folders.setIndentation(10)
         self.folders.setSortingEnabled(True)
         self.folders.selectionModel().selectionChanged.connect(self.folder_selected)
+        self.folders.setSelectionMode(QAbstractItemView.SelectionMode.ContiguousSelection)
         # endregion
        
         # region Browser View
-        self.browser_detailview = QListWidget()
+        self.browser_detailView = QDetailListView()
         self.browser_thumbnails = QGridLayout()
-        self.browser_detailview.itemSelectionChanged.connect(self.display_media)
+        self.browser_detailView.setSelectionChangedFunction(self.display_media)
+        # self.browser_detailView.selectionModel().selectionChanged.connect(self.display_media)
         browser = QWidget()
 
         browserToggles = QToolBar()
@@ -189,7 +235,7 @@ class MainWindow(QMainWindow):
         # scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         # scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         # scroll_area.setWidget(grid)
-        browserLayout.addWidget(self.browser_detailview)
+        browserLayout.addWidget(self.browser_detailView)
 
         # browserLayout.addWidget(scroll_area)
         browserLayout.addLayout(self.browser_thumbnails)
@@ -234,7 +280,7 @@ class MainWindow(QMainWindow):
         tagBarWidget = QWidget()
         tagBarWidget.setLayout(tagBarLayout)
 
-        btn_add_tag.pressed.connect(lambda: self.add_tag_to_file(tag_bar.text(), self.browser_detailview.currentItem().text()))
+        btn_add_tag.pressed.connect(lambda: self.add_tag_to_file(tag_bar.text(), self.browser_detailView.currentItem().text()))
         tag_bar.returnPressed.connect(btn_add_tag.pressed)
         tag_view = QWidget()
         tagLayout = QVBoxLayout()
@@ -258,9 +304,11 @@ class MainWindow(QMainWindow):
         # endregion
         
         # region Setup
+        self.folder_selected()
         self.show()
         # endregion
 
+    # region Mechanics
     def toggle_view(self, button, other, checked, thumb):
         if checked:
             button.setChecked(True)
@@ -280,12 +328,22 @@ class MainWindow(QMainWindow):
         #         widget.hide()
         
     def folder_selected(self):
-        self.browser_detailview.clear()
-        for index in self.folders.selectedIndexes():
-            sym_path = self.fileSystem.filePath(index)
-            org_path = self.sql_get_files_in_folder(sym_path)
-            self.browser_detailview.addItems([os.path.join(root, f) for root, dir, file in os.walk(org_path) for f in file])
-    
+        self.browser_detailView.clear()
+        if len(self.folders.selectedIndexes()) == 0:
+            self.browser_detailView.add_strings([result_row[1] for result_row in self.sql_get_all_files()])
+            self.dock_browser.setObjectName("Browser")
+        else:
+            for index in self.folders.selectedIndexes():
+                sym_path = self.fileSystem.filePath(index)
+                org_path = self.sql_get_files_in_folder(sym_path)
+                self.browser_detailView.add_strings([f'{self.file_op(root)}/{f}' for root, dir, file in os.walk(org_path) for f in file])
+        # self.browser_detailView.sortItems()
+        # self.browser_detailView.setModel(QStringListModel(set([self.browser_detailView.item(i).text() for i in range(self.browser_detailView.count())])))
+        # set(self.browser_detailView.items())
+
+    def file_op(self, f):
+        return f.replace('\\', '/')
+
     def add_folder(self):
         path = QFileDialog.getExistingDirectory(self, 
 			"Select Folder to Add to View", os.path.expanduser("~"))
@@ -294,10 +352,13 @@ class MainWindow(QMainWindow):
             self.status.showMessage(f"Folder already exists - {path}")
             return
         os.symlink(path, target, target_is_directory=True)
-        files = [os.path.join(root, f) for root, dir, file in os.walk(path) for f in file]
-        self.browser_detailview.addItems(files)
-        self.browser_detailview.sortItems()
+        files = [f'{self.file_op(root)}/{f}' for root, dir, file in os.walk(path) for f in file]
+        self.browser_detailView.add_strings(files)
+        # self.browser_detailView.addItems(files)
+        # self.browser_detailView.sortItems()
         self.sql_add_folder(path, target)
+        for subfolder in [f'{root}/{d}'[len(path) + 1:].replace('\\', '/') for root, dirs, files in os.walk(path) for d in dirs]:
+            self.sql_add_folder(f'{path}/{subfolder}', f'{target}/{subfolder}')
         self.sql_add_files(files)
         # for i, file in enumerate(files):
             # widget = QWidget()
@@ -326,10 +387,11 @@ class MainWindow(QMainWindow):
     def show_about(self):
         self.about = AboutWindow()
         self.about.show()
+    # endregion
 
     # region Display Media
     def display_media(self):
-        file_path = self.browser_detailview.currentItem().text()
+        file_path = self.browser_detailView.get_selected_text()
         _, extension = os.path.splitext(file_path)
         if extension in self.filetype_switcher:
             self.filetype_switcher[extension](file_path)
@@ -373,7 +435,6 @@ class MainWindow(QMainWindow):
     
     def sql_add_folder(self, folder, sym_path):
         self.db.execute_query(f"INSERT INTO Folders (org_path, sym_path) VALUES ('{folder}', '{sym_path}')")
-        # self.db.execute_query(f"INSERT INTO Folders (path) VALUES ('{folder}')")
 
     def sql_add_files(self, files):
         for file in files:
