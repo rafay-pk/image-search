@@ -1,9 +1,11 @@
-import sys, os, pathlib, sqlite3, face_recognition, threading, random, numpy as np, base64
-from PyQt6.QtCore import Qt, QSize, QDir, QSize, QUrl, QStringListModel, QItemSelectionModel, QSortFilterProxyModel, QModelIndex
-from PyQt6.QtGui import QFileSystemModel, QPixmap, QMovie, QIcon,  QAction, QImage, QStandardItemModel, QStandardItem
-from PyQt6.QtMultimedia import QMediaPlayer
+import sys, os, sqlite3, face_recognition, threading, random, numpy as np, base64, shutil
+from PyQt6.QtCore import Qt, QSize, QDir, QSize, QUrl, QSortFilterProxyModel, QMargins
+from PyQt6.QtGui import QFileSystemModel, QPixmap, QMovie, QIcon,  QAction, QStandardItemModel, QStandardItem
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtWidgets import (
+    QStyle,
+    QSlider,
     QApplication,
     QMainWindow,
     QFileDialog,
@@ -19,19 +21,17 @@ from PyQt6.QtWidgets import (
     QDockWidget,
     QToolBar,
     QGridLayout,
-    QScrollArea,
-    QSplitter,
     QAbstractItemView,
     QListView,
     QMenu,
-    QListWidgetItem
+    QListWidgetItem,
+    QSpacerItem,
 )
 
 
 class SQLiteDB:
     def __init__(self, db_path):
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
-        self.cursor = self.conn.cursor()
     
     def execute_query_from_file(self, file_path):
         if not os.path.isfile(file_path):
@@ -44,17 +44,14 @@ class SQLiteDB:
                     self.execute_query(query)
 
     def execute_query(self, query):
-        for q in query.split(";"):
-            self.cursor.execute(q) 
-            self.conn.commit()
+        self.conn.execute(query)
+        self.conn.commit()
 
     def fetch_data(self, query):
-        self.cursor.execute(query)
-        data = self.cursor.fetchall()
-        return data
+        cursor = self.conn.execute(query)
+        return cursor.fetchall()
 
     def close_connection(self):
-        self.cursor.close()
         self.conn.close()
 
 class QDeselectableListWidget(QListWidget):
@@ -75,19 +72,11 @@ class QDeselectableTreeView(QTreeView):
     # def setOtherFunction(self, func):
         # self.other_func = func
 
-# class QCStandardItemModel(QStandardItemModel):
-#     def rowCount(self, parent=QModelIndex()):
-#         return 20000
-
-# class QCSortFilterProxyModel(QSortFilterProxyModel):
-#     def rowCount(self, parent=QModelIndex()):
-#         return 20000
-
 class QDetailListView(QListView):
     def __init__(self, parent=None):
         super().__init__(parent)
         
-        self.setSelectionMode(QListView.SelectionMode.SingleSelection)
+        self.setSelectionMode(QListView.SelectionMode.ExtendedSelection)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
 
         self.model = QStandardItemModel()
@@ -102,6 +91,7 @@ class QDetailListView(QListView):
         self.setModel(self.sort_proxy_model)
         
         self.items = set()
+        self.index_map = {}
     
     def get_len(self):
         return len(self.items)
@@ -117,20 +107,52 @@ class QDetailListView(QListView):
         else:
             return None
 
+    # def add_strings(self, string_list):
+    #     for string in [s for s in string_list if s not in self.items]:
+    #         self.items.add(string)
+    #         self.model.appendRow(QStandardItem(string))
     def add_strings(self, string_list):
         for string in [s for s in string_list if s not in self.items]:
             self.items.add(string)
-            self.model.appendRow(QStandardItem(string))
+            item = QStandardItem(string)
+            row = self.model.rowCount()
+            self.model.setItem(row, item)
+            self.index_map[string] = row
     
+    def remove_strings(self, string_list):
+        for string in string_list:
+            if string in self.items:
+                self.items.remove(string)
+                if string in self.index_map:
+                    row = self.index_map[string]
+                    self.model.removeRow(row)
+                    del self.index_map[string]
+
     def clear(self):
         self.model.clear()
         self.items.clear()
+
+class AboutWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("Goodbye World"))
+        self.setLayout(layout)
+
+# region Increase Display Count
+# class QCStandardItemModel(QStandardItemModel):
+#     def rowCount(self, parent=QModelIndex()):
+#         return 20000
+
+# class QCSortFilterProxyModel(QSortFilterProxyModel):
+#     def rowCount(self, parent=QModelIndex()):
+#         return 20000
+# endregion
 
 class MainWindow(QMainWindow):
     def __init__(self):
 
         # region Setup
-
         self.filetype_switcher = {
             ".png": self.display_static,
             ".jpg": self.display_static,
@@ -153,10 +175,11 @@ class MainWindow(QMainWindow):
             ".webm": self.display_video,
             ".mpeg": self.display_video,
         }
-        
+        self.db_path = "data/database.db"
+
         super().__init__()
         self.setWindowTitle("Image Search")
-        self.db = SQLiteDB("data/database.db")
+        self.db = SQLiteDB(self.db_path)
         self.db.execute_query_from_file("data/sql/create_db.sql")
         self.resize(QSize(800, 500))
         self.status = QStatusBar(self)
@@ -178,6 +201,9 @@ class MainWindow(QMainWindow):
         self.action_saveAsView.setStatusTip("Save As... this View of your Media Files")
         self.menu_file.addSeparator()
         self.action_importTags = self.menu_file.addAction("Import Tags from View")
+        self.menu_file.addSeparator()
+        self.action_exit = self.menu_file.addAction("Exit")
+        self.action_exit.triggered.connect(self.close)
 
         self.menu_view = self.menu_bar.addMenu("View")
         self.action_addFolder = self.menu_view.addAction("Add Folder \tCtrl+Shift+A")
@@ -226,8 +252,7 @@ class MainWindow(QMainWindow):
         self.dock_folders = QDockWidget("Folders")
         self.dock_folders.setWidget(self.folders)
         self.fileSystem = QFileSystemModel()
-        self.folder_path = os.getcwd().replace("\\", '/') + "/data/folders/"
-        # import shutil
+        self.folder_path = os.getcwd().replace("\\", '/') + "/data/folders"
         # shutil.rmtree(self.folder_path) #DEV 
         os.makedirs(self.folder_path, exist_ok=True)
         self.fileSystem.setRootPath(self.folder_path)
@@ -288,21 +313,70 @@ class MainWindow(QMainWindow):
         # endregion
 
         # region Media View
+        self.media_player = QMediaPlayer()
+        self.audio_output = QAudioOutput()
+        self.audio_output.setVolume(60)
+        self.media_player.setAudioOutput(self.audio_output)
+        self.media_player.setLoops(QMediaPlayer.Loops.Infinite)
         self.image = QLabel()
         self.image.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.video = QVideoWidget()
-        self.video.hide()
+        self.media_player.setVideoOutput(self.video)
+        # self.fullscreen_button = QPushButton()
+        # self.fullscreen_button.pressed.connect(lambda: self.showFullScreen())
+        self.videocontrols = QVBoxLayout()
+        self.videocontrols.setContentsMargins(2,2,2,2)
+        self.videocontrols.setSpacing(0)
+        self.play_btn = QPushButton(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay), "", self, checkable=True)
+        self.play_btn.pressed.connect(self.play)
+        self.volume_btn = QPushButton(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolume), "", self, checkable=True)
+        self.volume_btn.pressed.connect(self.mute)
+        self.media_player.playbackStateChanged.connect(self.mediaStateChanged)
+        self.media_player.positionChanged.connect(self.positionChanged)
+        self.media_player.durationChanged.connect(self.durationChanged)
+        self.play_btn.setFixedSize(20, 20)
+        self.volume_btn.setFixedSize(20, 20)
+        self.media_seeker = QSlider(Qt.Orientation.Horizontal)
+        self.media_seeker.sliderMoved.connect(self.setPosition)
+        self.volume_control = QSlider(Qt.Orientation.Horizontal)
+        self.volume_control.setRange(0, 100)
+        self.volume_control.setValue(60)
+        self.volume_control.setMaximumWidth(50)
+        self.volume_control.sliderMoved.connect(self.setVolume)
+        self.time_tracker = QLabel(f"--:--/--:--")
+        # Add media controls here
+        self.othercontrols = QHBoxLayout()
+        self.othercontrols.setContentsMargins(0, 0, 0, 0)
+        self.othercontrols.setSpacing(5)
+        self.othercontrols.addWidget(self.play_btn)
+        self.othercontrols.addWidget(self.volume_btn)
+        self.othercontrols.addWidget(self.volume_control)
+        self.othercontrols.addWidget(self.time_tracker)
+        # self.othercontrols.addWidget(self.fullscreen_button)
+        self.othercontrols_widget = QWidget()
+        self.othercontrols_widget.setLayout(self.othercontrols)
+        self.videocontrols.addWidget(self.media_seeker)
+        self.videocontrols.addWidget(self.othercontrols_widget)
+        self.othercontrols_widget.setFixedHeight(20)
+        self.videocontrols_widget = QWidget()
+        self.videocontrols_widget.setLayout(self.videocontrols)
+        self.videocontrols_widget.setFixedHeight(40)
+        self.videobox = QVBoxLayout()
+        self.videobox.setContentsMargins(0, 0, 0, 0)
+        self.videobox.setSpacing(0)
+        self.videobox.addWidget(self.video)
+        self.videobox.addWidget(self.videocontrols_widget)
+        self.videobox_widget = QWidget()
+        self.videobox_widget.setLayout(self.videobox)
+        self.videobox_widget.hide()
         mediaLayout = QVBoxLayout()
         mediaLayout.addWidget(self.image)
-        mediaLayout.addWidget(self.video)
+        mediaLayout.addWidget(self.videobox_widget)
         mediaLayout.setContentsMargins(0, 0, 0, 0)
         media_view = QWidget()
         media_view.setLayout(mediaLayout)
         self.dock_media = QDockWidget("Media")
         self.dock_media.setWidget(media_view)
-        self.media_player = QMediaPlayer()
-        self.media_player.setLoops(-1)
-        self.media_player.setVideoOutput(self.video)
         # self.resizeEvent = self.update_size
         # endregion
 
@@ -366,16 +440,32 @@ class MainWindow(QMainWindow):
         self.dock_browser.setMinimumWidth(300)
         # self.dock_media.setMinimumWidth(200)
         # endregion
-        
+
         # region Setup
         self.folder_selected()
         # self.people_selected()
         self.editing = False
         self.old_tag = ""
+        threading.Thread(target=self.update_folders).start()
         self.show()
         # endregion
 
     # region Mechanics
+    def update_folders(self):
+        old = self.sql_get_all_files()
+        folders = self.sql_get_all_folders()
+        new = [self.file_op(os.path.join(folder, file)) for folder in folders for file in os.listdir(folder) if os.path.isfile(os.path.join(folder, file))]
+        difference = len(new) - len(old)
+        if difference != 0:
+            self.status.showMessage(f"Found {difference} file changes")
+            new_files = [self.file_op(x) for x in new if x not in old]
+            deleted_files = [self.file_op(x) for x in old if x not in new]
+            self.sql_add_files(new_files)
+            self.sql_delete_files(deleted_files)
+            self.browser_detailView.add_strings(new_files)
+            self.browser_detailView.remove_strings(deleted_files)
+            self.status.showMessage(f"Added {len(new_files)} files and removed {len(deleted_files)} files")
+
     def tag_double_clicked(self):
         self.editing = True
         self.old_tag = self.tags.selectedItems()[0].text()
@@ -403,9 +493,13 @@ class MainWindow(QMainWindow):
 
     def folder_context_menu(self, pos):
         menu = QMenu()
-        action1 = QAction("Process Folder", self)
-        action1.triggered.connect(self.ai_process_folder_start)
-        menu.addAction(action1)
+        action_add_folder = QAction("Add Folder\tCtrl+Shift+A", self)
+        action_add_folder.triggered.connect(self.add_folder)
+        action_recognize_people = QAction("Recognize People", self)
+        action_recognize_people.triggered.connect(lambda: threading.Thread(target=self.ai_recognize_people).start())
+        menu.addAction(action_add_folder)
+        menu.addSeparator()
+        menu.addAction(action_recognize_people)
         menu.exec(self.folders.viewport().mapToGlobal(pos))
 
     def clear(self):
@@ -454,7 +548,8 @@ class MainWindow(QMainWindow):
     def add_folder(self):
         path = QFileDialog.getExistingDirectory(self, 
 			"Select Folder to Add to View", os.path.expanduser("~"))
-        target = self.folder_path + os.path.basename(path)
+        target = f'{self.folder_path}/{os.path.basename(path)}'
+        self.folder_path = os.path.dirname(target)
         if os.path.exists(target):
             self.status.showMessage(f"Folder already exists - {path}")
             return
@@ -477,7 +572,7 @@ class MainWindow(QMainWindow):
         self.status.showMessage(f"Added - {path}")
 
     def add_tag_to_file(self, tag, file):
-        if len(self.tags.findItems(tag, Qt.MatchFlag.MatchExactly)) > 0:
+        if self.sql_check_tag_exists(file, tag):
             self.status.showMessage(f"Tag already exists on media file {file} - {tag}")
             return
         self.sql_add_tag_to_file(tag, file)
@@ -494,23 +589,10 @@ class MainWindow(QMainWindow):
         self.browser_detailView.add_strings(self.sql_search_inclusive(tagList))
         self.update_title(tagString)
 
-    # def ai_process(self):
-    #     path = self.browser_detailView.get_selected_text()
-    #     self.status.showMessage(f"AI Processing {path} - Started")
-    #     _, extension = os.path.splitext(path)
-    #     if self.filetype_switcher[extension].__name__ != self.display_static.__name__:
-    #         self.status.showMessage(f"AI Processing - Unsupported file type - {extension}")
-    #     else:
-    #         image = face_recognition.load_image_file(path)
-    #         face_locations = face_recognition.face_locations(image)
-    #         print(face_locations)
-    #         self.status.showMessage("AI Processing - Finished")
-
     def generate_random_person_name(self):
         return f'person_{random.randint(10000, 99999)}'
 
-    def add_person(self, encoding, file):
-        unique_people = self.sql_get_all_encodings()
+    def add_person(self, unique_people, encoding, file):
         result = face_recognition.compare_faces(unique_people, encoding)
         check = np.count_nonzero(result)
         if check == 0:
@@ -525,14 +607,12 @@ class MainWindow(QMainWindow):
             name = self.sql_get_person_name(unique_people[np.argmin(distances)])
         self.sql_add_tag_to_file(name, file)
         self.tags_applied += 1
+        return True if check == 0 else False
 
-    def ai_process_folder_start(self):
-        thread = threading.Thread(target=self.ai_process_folder)
-        thread.start()
-    
-    def ai_process_folder(self):
+    def ai_recognize_people(self):
         self.tags_applied = 0
         self.new_people = 0
+        unique_people = self.sql_get_all_encodings()
         for index in self.folders.selectedIndexes():
             sym_path = self.fileSystem.filePath(index)
             org_path = self.sql_get_files_in_folder(sym_path)
@@ -545,12 +625,55 @@ class MainWindow(QMainWindow):
                 face_encodings = face_recognition.face_encodings(image, num_jitters=5, model="large")
                 if len(face_encodings) > 0:
                     for encoding in face_encodings:
-                        self.add_person(encoding, file)
+                        if self.add_person(unique_people, encoding, file):
+                            unique_people.append(encoding)
         self.status.showMessage(f"AI Processing - {org_path} - Finished - Applied {self.tags_applied} tags - Detected {self.new_people} new people")
         
     def show_about(self):
         self.about = AboutWindow()
         self.about.show()
+    # endregion
+
+    # region Media Controls
+    def play(self):
+        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.media_player.pause()
+        else:
+            self.media_player.play()
+
+    def mediaStateChanged(self, state):
+        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.play_btn.setIcon(
+                    self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
+        else:
+            self.play_btn.setIcon(
+                    self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+    
+    def ms_to_mmss(self, milliseconds):
+        minutes, seconds = divmod(milliseconds // 1000, 60)
+        return f"{minutes:02d}:{seconds:02d}"
+
+    def positionChanged(self, position):
+        self.media_seeker.setValue(position)
+        self.time_tracker.setText(f'{self.ms_to_mmss(self.media_player.position())}/{self.ms_to_mmss(self.media_player.duration())}')
+
+    def durationChanged(self, duration):
+        self.media_seeker.setRange(0, duration)
+
+    def setPosition(self, position):
+        self.media_player.setPosition(position)
+    
+    def setVolume(self):
+        volume = self.volume_control.value() / 100
+        self.audio_output.setVolume(volume)
+
+    def mute(self):
+        isMuted = self.audio_output.isMuted()
+        self.audio_output.setMuted(not isMuted)
+        if not isMuted:
+            self.volume_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolumeMuted))
+        else:
+            self.volume_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolume))
     # endregion
 
     # region Display Media
@@ -572,13 +695,13 @@ class MainWindow(QMainWindow):
     def display_static(self, file_path):
         self.media_player.stop()
         self.image.show()
-        self.video.hide()
+        self.videobox_widget.hide()
         self.image.setPixmap(QPixmap(file_path).scaled(self.dock_media.size() * 0.95, Qt.AspectRatioMode.KeepAspectRatio))
     
     def display_animated(self, file_path):
         self.media_player.stop()
         self.image.show()
-        self.video.hide()
+        self.videobox_widget.hide()
         movie = QMovie(file_path)
         movie.setScaledSize(QPixmap(file_path).scaled(self.dock_media.size() * 0.95, Qt.AspectRatioMode.KeepAspectRatio).size())
         self.image.setMovie(movie)
@@ -586,12 +709,15 @@ class MainWindow(QMainWindow):
     
     def display_video(self, file_path):
         self.image.hide()
-        self.video.show()
+        self.videobox_widget.show()
         self.media_player.setSource(QUrl.fromLocalFile(file_path))
         self.media_player.play()
     # endregion
         
     # region SQL
+    def sql_get_all_folders(self):
+        return [x[0] for x in self.db.fetch_data(f"SELECT f.org_path FROM Folders f")]
+
     def sql_add_new_tag(self, tag):
         self.db.execute_query(f"INSERT OR IGNORE INTO Tags (name) VALUES ('{tag}')")
 
@@ -610,9 +736,13 @@ class MainWindow(QMainWindow):
         for file in files:
             self.db.execute_query(f"INSERT INTO Files (path) VALUES ('{file}')")
 
+    def sql_delete_files(self, files):
+        for file in files:
+            self.db.execute_query(f"DELETE FROM Files WHERE path = '{file}'")
+
     def sql_add_tag_to_file(self, tag, file):
         self.sql_add_new_tag(tag)
-        query = f"""INSERT INTO FileTags (file_id, tag_id) VALUES 
+        query = f"""INSERT OR IGNORE INTO FileTags (file_id, tag_id) VALUES 
                     (
                         (SELECT id FROM Files WHERE path = '{file}'),
                         (SELECT id FROM Tags WHERE name = '{tag}')
@@ -625,7 +755,7 @@ class MainWindow(QMainWindow):
         self.db.execute_query(query)
     
     def sql_get_all_files(self):
-        return [x[1] for x in self.db.fetch_data("SELECT * FROM Files")]
+        return [x[0] for x in self.db.fetch_data("SELECT f.path FROM Files f")]
     
     def sql_get_files_in_folder(self, sym_path):
         return self.db.fetch_data(f"SELECT f.org_path FROM Folders f WHERE sym_path = '{sym_path}'")[0][0]
@@ -639,6 +769,10 @@ class MainWindow(QMainWindow):
                         WHERE f.path = '{file}'"""
         return [x[0] for x in self.db.fetch_data(query)]
     
+    def sql_check_tag_exists(self, file, tag):
+        tags = self.db.fetch_data(f"SELECT t.name FROM Tags t JOIN FileTags ft ON  t.id = ft.tag_id JOIN Files f ON ft.file_id = f.id WHERE f.path = '{file}'")
+        return tag in [x[0] for x in tags]
+
     def sql_search_inclusive(self, tags):
         query = f"""SELECT DISTINCT f.path FROM Files f
                         JOIN FileTags ft
@@ -652,7 +786,7 @@ class MainWindow(QMainWindow):
 
     def sql_add_face_encoding(self, name, encoding):
         enc = base64.binascii.b2a_base64(encoding).decode("ascii")
-        self.db.execute_query(f"INSERT INTO People (name, encoding) VALUES ('{name}', '{enc}')")
+        self.db.execute_query(f"INSERT OR IGNORE INTO People (name, encoding) VALUES ('{name}', '{enc}')")
     
     def sql_get_all_encodings(self):
         return [np.frombuffer(base64.binascii.a2b_base64(x[0].encode("ascii"))) for x in self.db.fetch_data("SELECT encoding FROM People")]
@@ -664,14 +798,6 @@ class MainWindow(QMainWindow):
     def sql_get_all_people(self):
         return [x[0] for x in self.db.fetch_data("SELECT name FROM People")]
     # endregion
-
-class AboutWindow(QWidget):
-    def __init__(self):
-        super().__init__()
-        layout = QVBoxLayout()
-        layout.addWidget(QLabel("Goodbye World"))
-        self.setLayout(layout)
-
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
