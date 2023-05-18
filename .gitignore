@@ -2,7 +2,8 @@
 .idea/
 
 # Development
-data/
+data/folders/
+data/database.db
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

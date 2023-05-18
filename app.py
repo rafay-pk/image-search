@@ -1,6 +1,6 @@
 import sys, os, sqlite3, face_recognition, threading, random, numpy as np, base64, shutil
 from PyQt6.QtCore import Qt, QSize, QDir, QSize, QUrl, QSortFilterProxyModel, QMargins
-from PyQt6.QtGui import QFileSystemModel, QPixmap, QMovie, QIcon,  QAction, QStandardItemModel, QStandardItem
+from PyQt6.QtGui import QFileSystemModel, QPixmap, QMovie, QIcon, QAction, QStandardItemModel, QStandardItem
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtWidgets import (
@@ -32,7 +32,7 @@ from PyQt6.QtWidgets import (
 class SQLiteDB:
     def __init__(self, db_path):
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
-    
+
     def execute_query_from_file(self, file_path):
         if not os.path.isfile(file_path):
             raise ValueError("File path is not valid.")
@@ -54,51 +54,54 @@ class SQLiteDB:
     def close_connection(self):
         self.conn.close()
 
+
 class QDeselectableListWidget(QListWidget):
     def mousePressEvent(self, event):
         self.clearSelection()
         QListWidget.mousePressEvent(self, event)
 
+
 class QDeselectableTreeView(QTreeView):
     # def __init__(self, parent=None):
-        # super().__init__(parent)
-        # self.other_func = lambda: None
+    # super().__init__(parent)
+    # self.other_func = lambda: None
 
     def mousePressEvent(self, event):
         self.clearSelection()
         QTreeView.mousePressEvent(self, event)
         # self.other_func()
-    
+
     # def setOtherFunction(self, func):
-        # self.other_func = func
+    # self.other_func = func
+
 
 class QDetailListView(QListView):
     def __init__(self, parent=None):
         super().__init__(parent)
-        
+
         self.setSelectionMode(QListView.SelectionMode.ExtendedSelection)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
 
         self.model = QStandardItemModel()
         self.setModel(self.model)
-        
+
         self.sort_proxy_model = QSortFilterProxyModel()
         self.sort_proxy_model.setSourceModel(self.model)
         self.sort_proxy_model.setSortRole(Qt.ItemDataRole.DisplayRole)
         self.sort_proxy_model.sort(0, Qt.SortOrder.AscendingOrder)
         self.setBatchSize(2000)
-        
+
         self.setModel(self.sort_proxy_model)
-        
+
         self.items = set()
         self.index_map = {}
-    
+
     def get_len(self):
         return len(self.items)
 
     def setSelectionChangedFunction(self, func):
         self.selectionModel().selectionChanged.connect(func)
-    
+
     def get_selected_text(self):
         index = self.currentIndex()
         if index.isValid():
@@ -118,7 +121,7 @@ class QDetailListView(QListView):
             row = self.model.rowCount()
             self.model.setItem(row, item)
             self.index_map[string] = row
-    
+
     def remove_strings(self, string_list):
         for string in string_list:
             if string in self.items:
@@ -132,12 +135,14 @@ class QDetailListView(QListView):
         self.model.clear()
         self.items.clear()
 
+
 class AboutWindow(QWidget):
     def __init__(self):
         super().__init__()
         layout = QVBoxLayout()
         layout.addWidget(QLabel("Goodbye World"))
         self.setLayout(layout)
+
 
 # region Increase Display Count
 # class QCStandardItemModel(QStandardItemModel):
@@ -150,6 +155,7 @@ class AboutWindow(QWidget):
 # endregion
 
 class MainWindow(QMainWindow):
+    # noinspection PyUnresolvedReferences
     def __init__(self):
 
         # region Setup
@@ -245,7 +251,7 @@ class MainWindow(QMainWindow):
         self.dock_search.setTitleBarWidget(hidder)
         hidder.setVisible(False)
         # endregion
-        
+
         # region Folder View
         self.folders = QDeselectableTreeView()
         # self.folders.setOtherFunction(lambda: self.)
@@ -253,7 +259,7 @@ class MainWindow(QMainWindow):
         self.dock_folders.setWidget(self.folders)
         self.fileSystem = QFileSystemModel()
         self.folder_path = os.getcwd().replace("\\", '/') + "/data/folders"
-        # shutil.rmtree(self.folder_path) #DEV 
+        # shutil.rmtree(self.folder_path) #DEV
         os.makedirs(self.folder_path, exist_ok=True)
         self.fileSystem.setRootPath(self.folder_path)
         self.fileSystem.setFilter(QDir.Filter.Dirs | QDir.Filter.NoDotAndDotDot)
@@ -270,7 +276,7 @@ class MainWindow(QMainWindow):
         self.folders.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.folders.customContextMenuRequested.connect(self.folder_context_menu)
         # endregion
-       
+
         # region Browser View
         self.browser_detailView = QDetailListView()
         self.browser_thumbnails = QGridLayout()
@@ -278,17 +284,17 @@ class MainWindow(QMainWindow):
         browser = QWidget()
 
         browserToggles = QToolBar()
-        detailview = QAction(QIcon("icons/details.png"),"", self, checkable=True, checked=True)
-        thumbnails = QAction(QIcon("icons/thumbs.png"),"", self, checkable=True)
+        detailview = QAction(QIcon("icons/details.png"), "", self, checkable=True, checked=True)
+        thumbnails = QAction(QIcon("icons/thumbs.png"), "", self, checkable=True)
         detailview.toggled.connect(lambda checked: self.toggle_view(detailview, thumbnails, checked, False))
         thumbnails.toggled.connect(lambda checked: self.toggle_view(thumbnails, detailview, checked, True))
         browserToggles.addAction(detailview)
         browserToggles.addAction(thumbnails)
-        browserToggles.widgetForAction(detailview).setFixedSize(21,21)
-        browserToggles.widgetForAction(thumbnails).setFixedSize(21,21)
+        browserToggles.widgetForAction(detailview).setFixedSize(21, 21)
+        browserToggles.widgetForAction(thumbnails).setFixedSize(21, 21)
         browserToggles.setContentsMargins(0, 0, 0, 0)
         browserToggles.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        
+
         browserLayout = QVBoxLayout()
         browser.setLayout(browserLayout)
         # grid = QWidget()
@@ -303,7 +309,7 @@ class MainWindow(QMainWindow):
         # browserLayout.addWidget(scroll_area)
         browserLayout.addLayout(self.browser_thumbnails)
         browserLayout.addWidget(browserToggles)
-        
+
         browserLayout.setContentsMargins(0, 0, 0, 0)
         browserLayout.setSpacing(0)
         self.browserView = QWidget()
@@ -324,9 +330,9 @@ class MainWindow(QMainWindow):
         self.media_player.setVideoOutput(self.video)
         # self.fullscreen_button = QPushButton()
         # self.fullscreen_button.pressed.connect(lambda: self.showFullScreen())
-        self.videocontrols = QVBoxLayout()
-        self.videocontrols.setContentsMargins(2,2,2,2)
-        self.videocontrols.setSpacing(0)
+        self.video_controls = QVBoxLayout()
+        self.video_controls.setContentsMargins(2, 2, 2, 2)
+        self.video_controls.setSpacing(0)
         self.play_btn = QPushButton(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay), "", self, checkable=True)
         self.play_btn.pressed.connect(self.play)
         self.volume_btn = QPushButton(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolume), "", self, checkable=True)
@@ -355,11 +361,11 @@ class MainWindow(QMainWindow):
         # self.othercontrols.addWidget(self.fullscreen_button)
         self.othercontrols_widget = QWidget()
         self.othercontrols_widget.setLayout(self.othercontrols)
-        self.videocontrols.addWidget(self.media_seeker)
-        self.videocontrols.addWidget(self.othercontrols_widget)
+        self.video_controls.addWidget(self.media_seeker)
+        self.video_controls.addWidget(self.othercontrols_widget)
         self.othercontrols_widget.setFixedHeight(20)
         self.videocontrols_widget = QWidget()
-        self.videocontrols_widget.setLayout(self.videocontrols)
+        self.videocontrols_widget.setLayout(self.video_controls)
         self.videocontrols_widget.setFixedHeight(40)
         self.videobox = QVBoxLayout()
         self.videobox.setContentsMargins(0, 0, 0, 0)
@@ -396,13 +402,14 @@ class MainWindow(QMainWindow):
         tagBarLayout.addWidget(btn_add_tag)
         tagBarWidget = QWidget()
         tagBarWidget.setLayout(tagBarLayout)
-        btn_add_tag.pressed.connect(lambda: self.add_tag_to_file(self.tag_bar.text(), self.browser_detailView.get_selected_text()))
+        btn_add_tag.pressed.connect(
+            lambda: self.add_tag_to_file(self.tag_bar.text(), self.browser_detailView.get_selected_text()))
         self.tag_bar.returnPressed.connect(btn_add_tag.pressed)
         self.tag_bar_shortcut = QPushButton()
         self.tag_bar_shortcut.setShortcut("Ctrl+T")
         self.tag_bar_shortcut.pressed.connect(lambda: self.tag_bar.setFocus())
         tagBarLayout.addWidget(self.tag_bar_shortcut)
-        self.tag_bar_shortcut.setFixedSize(0,0)
+        self.tag_bar_shortcut.setFixedSize(0, 0)
         tag_view = QWidget()
         tagLayout = QVBoxLayout()
         tagLayout.addWidget(self.tags)
@@ -454,7 +461,8 @@ class MainWindow(QMainWindow):
     def update_folders(self):
         old = self.sql_get_all_files()
         folders = self.sql_get_all_folders()
-        new = [self.file_op(os.path.join(folder, file)) for folder in folders for file in os.listdir(folder) if os.path.isfile(os.path.join(folder, file))]
+        new = [self.file_op(os.path.join(folder, file)) for folder in folders for file in os.listdir(folder) if
+               os.path.isfile(os.path.join(folder, file))]
         difference = len(new) - len(old)
         if difference != 0:
             self.status.showMessage(f"Found {difference} file changes")
@@ -529,7 +537,7 @@ class MainWindow(QMainWindow):
         #     for i in range(self.browser_thumbnails.count()):
         #         widget = self.browser_thumbnails.itemAt(i).widget()
         #         widget.hide()
-        
+
     def folder_selected(self):
         self.browser_detailView.clear()
         if len(self.folders.selectedIndexes()) == 0:
@@ -539,15 +547,16 @@ class MainWindow(QMainWindow):
             for index in self.folders.selectedIndexes():
                 sym_path = self.fileSystem.filePath(index)
                 org_path = self.sql_get_files_in_folder(sym_path)
-                self.browser_detailView.add_strings([f'{self.file_op(root)}/{f}' for root, dir, file in os.walk(org_path) for f in file])
+                self.browser_detailView.add_strings(
+                    [f'{self.file_op(root)}/{f}' for root, dir, file in os.walk(org_path) for f in file])
             self.update_title(self.folders.selectedIndexes()[0].data())
 
     def file_op(self, f):
         return f.replace('\\', '/')
 
     def add_folder(self):
-        path = QFileDialog.getExistingDirectory(self, 
-			"Select Folder to Add to View", os.path.expanduser("~"))
+        path = QFileDialog.getExistingDirectory(self,
+                                                "Select Folder to Add to View", os.path.expanduser("~"))
         target = f'{self.folder_path}/{os.path.basename(path)}'
         self.folder_path = os.path.dirname(target)
         if os.path.exists(target):
@@ -557,18 +566,19 @@ class MainWindow(QMainWindow):
         files = [f'{self.file_op(root)}/{f}' for root, dir, file in os.walk(path) for f in file]
         self.browser_detailView.add_strings(files)
         self.sql_add_folder(path, target)
-        for subfolder in [f'{root}/{d}'[len(path) + 1:].replace('\\', '/') for root, dirs, files in os.walk(path) for d in dirs]:
+        for subfolder in [f'{root}/{d}'[len(path) + 1:].replace('\\', '/') for root, dirs, files in os.walk(path) for d
+                          in dirs]:
             self.sql_add_folder(f'{path}/{subfolder}', f'{target}/{subfolder}')
         self.sql_add_files(files)
         # for i, file in enumerate(files):
-            # widget = QWidget()
-            # layout = QVBoxLayout()
-            # thumbnail = QLabel()
-            # thumbnail.setPixmap(QPixmap(file).scaledToWidth(200))
-            # layout.addWidget(thumbnail)
-            # layout.addWidget(QLabel(os.path.basename(file)))
-            # widget.setLayout(layout)
-            # self.browser_thumbnails.addWidget(widget, i // 4, i % 4)
+        # widget = QWidget()
+        # layout = QVBoxLayout()
+        # thumbnail = QLabel()
+        # thumbnail.setPixmap(QPixmap(file).scaledToWidth(200))
+        # layout.addWidget(thumbnail)
+        # layout.addWidget(QLabel(os.path.basename(file)))
+        # widget.setLayout(layout)
+        # self.browser_thumbnails.addWidget(widget, i // 4, i % 4)
         self.status.showMessage(f"Added - {path}")
 
     def add_tag_to_file(self, tag, file):
@@ -627,11 +637,13 @@ class MainWindow(QMainWindow):
                     for encoding in face_encodings:
                         if self.add_person(unique_people, encoding, file):
                             unique_people.append(encoding)
-        self.status.showMessage(f"AI Processing - {org_path} - Finished - Applied {self.tags_applied} tags - Detected {self.new_people} new people")
-        
+        self.status.showMessage(
+            f"AI Processing - {org_path} - Finished - Applied {self.tags_applied} tags - Detected {self.new_people} new people")
+
     def show_about(self):
         self.about = AboutWindow()
         self.about.show()
+
     # endregion
 
     # region Media Controls
@@ -644,25 +656,26 @@ class MainWindow(QMainWindow):
     def mediaStateChanged(self, state):
         if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.play_btn.setIcon(
-                    self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
+                self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
         else:
             self.play_btn.setIcon(
-                    self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
-    
+                self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+
     def ms_to_mmss(self, milliseconds):
         minutes, seconds = divmod(milliseconds // 1000, 60)
         return f"{minutes:02d}:{seconds:02d}"
 
     def positionChanged(self, position):
         self.media_seeker.setValue(position)
-        self.time_tracker.setText(f'{self.ms_to_mmss(self.media_player.position())}/{self.ms_to_mmss(self.media_player.duration())}')
+        self.time_tracker.setText(
+            f'{self.ms_to_mmss(self.media_player.position())}/{self.ms_to_mmss(self.media_player.duration())}')
 
     def durationChanged(self, duration):
         self.media_seeker.setRange(0, duration)
 
     def setPosition(self, position):
         self.media_player.setPosition(position)
-    
+
     def setVolume(self):
         volume = self.volume_control.value() / 100
         self.audio_output.setVolume(volume)
@@ -674,6 +687,7 @@ class MainWindow(QMainWindow):
             self.volume_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolumeMuted))
         else:
             self.volume_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolume))
+
     # endregion
 
     # region Display Media
@@ -696,24 +710,27 @@ class MainWindow(QMainWindow):
         self.media_player.stop()
         self.image.show()
         self.videobox_widget.hide()
-        self.image.setPixmap(QPixmap(file_path).scaled(self.dock_media.size() * 0.95, Qt.AspectRatioMode.KeepAspectRatio))
-    
+        self.image.setPixmap(
+            QPixmap(file_path).scaled(self.dock_media.size() * 0.95, Qt.AspectRatioMode.KeepAspectRatio))
+
     def display_animated(self, file_path):
         self.media_player.stop()
         self.image.show()
         self.videobox_widget.hide()
         movie = QMovie(file_path)
-        movie.setScaledSize(QPixmap(file_path).scaled(self.dock_media.size() * 0.95, Qt.AspectRatioMode.KeepAspectRatio).size())
+        movie.setScaledSize(
+            QPixmap(file_path).scaled(self.dock_media.size() * 0.95, Qt.AspectRatioMode.KeepAspectRatio).size())
         self.image.setMovie(movie)
         movie.start()
-    
+
     def display_video(self, file_path):
         self.image.hide()
         self.videobox_widget.show()
         self.media_player.setSource(QUrl.fromLocalFile(file_path))
         self.media_player.play()
+
     # endregion
-        
+
     # region SQL
     def sql_get_all_folders(self):
         return [x[0] for x in self.db.fetch_data(f"SELECT f.org_path FROM Folders f")]
@@ -728,7 +745,7 @@ class MainWindow(QMainWindow):
     def sql_delete_tag(self, tag):
         self.db.execute_query(f"DELETE FROM Tags WHERE name = '{tag}'")
         # Select id of that tag and then remove all filetags with that id
-    
+
     def sql_add_folder(self, folder, sym_path):
         self.db.execute_query(f"INSERT INTO Folders (org_path, sym_path) VALUES ('{folder}', '{sym_path}')")
 
@@ -753,10 +770,10 @@ class MainWindow(QMainWindow):
         query = f"""DELETE FROM FileTags WHERE file_id = (SELECT id FROM Files WHERE path = '{file}')
                     AND tag_id = (SELECT id FROM Tags WHERE name = '{tag}')"""
         self.db.execute_query(query)
-    
+
     def sql_get_all_files(self):
         return [x[0] for x in self.db.fetch_data("SELECT f.path FROM Files f")]
-    
+
     def sql_get_files_in_folder(self, sym_path):
         return self.db.fetch_data(f"SELECT f.org_path FROM Folders f WHERE sym_path = '{sym_path}'")[0][0]
 
@@ -768,9 +785,10 @@ class MainWindow(QMainWindow):
                             ON ft.tag_id = t.id 
                         WHERE f.path = '{file}'"""
         return [x[0] for x in self.db.fetch_data(query)]
-    
+
     def sql_check_tag_exists(self, file, tag):
-        tags = self.db.fetch_data(f"SELECT t.name FROM Tags t JOIN FileTags ft ON  t.id = ft.tag_id JOIN Files f ON ft.file_id = f.id WHERE f.path = '{file}'")
+        tags = self.db.fetch_data(
+            f"SELECT t.name FROM Tags t JOIN FileTags ft ON  t.id = ft.tag_id JOIN Files f ON ft.file_id = f.id WHERE f.path = '{file}'")
         return tag in [x[0] for x in tags]
 
     def sql_search_inclusive(self, tags):
@@ -787,17 +805,19 @@ class MainWindow(QMainWindow):
     def sql_add_face_encoding(self, name, encoding):
         enc = base64.binascii.b2a_base64(encoding).decode("ascii")
         self.db.execute_query(f"INSERT OR IGNORE INTO People (name, encoding) VALUES ('{name}', '{enc}')")
-    
+
     def sql_get_all_encodings(self):
-        return [np.frombuffer(base64.binascii.a2b_base64(x[0].encode("ascii"))) for x in self.db.fetch_data("SELECT encoding FROM People")]
-    
+        return [np.frombuffer(base64.binascii.a2b_base64(x[0].encode("ascii"))) for x in
+                self.db.fetch_data("SELECT encoding FROM People")]
+
     def sql_get_person_name(self, encoding):
         enc = base64.binascii.b2a_base64(encoding).decode("ascii")
         return self.db.fetch_data(f"SELECT name FROM People WHERE encoding = '{enc}'")[0][0]
-    
+
     def sql_get_all_people(self):
         return [x[0] for x in self.db.fetch_data("SELECT name FROM People")]
     # endregion
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
