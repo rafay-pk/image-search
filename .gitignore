@@ -4,7 +4,7 @@
 # Development
 data/folders/
 data/database.db
-
+eval/dataset
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
