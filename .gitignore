@@ -3,8 +3,9 @@
 
 # Development
 data/folders/
-data/database.db
+data/database.sqlite
 eval/dataset
+eval/models
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

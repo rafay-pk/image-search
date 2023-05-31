@@ -29,11 +29,12 @@ def add_data(folder_path):
 
     for i in range(len(data) - 1):
         # if score > 0.7:
-        if SequenceMatcher(None, data[i][1], data[i + 1][1]).ratio() > 0.7:
+        x = SequenceMatcher(None, data[i][1], data[i + 1][1]).ratio()
+        if 0.95 > x > 0.7:
             cursor.execute(f'SELECT f.path FROM Files f WHERE f.id = {data[i][0]}')
-            path1 = cursor.fetchone()
+            path1 = cursor.fetchone()[0]
             cursor.execute(f'SELECT f.path FROM Files f WHERE f.id = {data[i + 1][0]}')
-            path2 = cursor.fetchone()
+            path2 = cursor.fetchone()[0]
             similar.append([path1, path2])
 
     [print(x, sep='\n') for x in similar]
@@ -57,7 +58,7 @@ def add_data(folder_path):
             CREATE TABLE IF NOT EXISTS Collections (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             collection_id INTEGER,
-            file_id INTEGER
+            file TEXT
         );
     ''')
 
@@ -66,9 +67,7 @@ def add_data(folder_path):
     for collection in similar:
         collection_counter += 1
         for file in collection:
-            cursor.execute('SELECT f.id FROM Files f WHERE f.path = ?', (file))
-            file_id = cursor.fetchone()[0]
-            cursor.execute('INSERT OR IGNORE INTO Collections (collection_id, file_id) VALUES (?, ?)', (collection_counter, file_id))
+            cursor.execute('INSERT OR IGNORE INTO Collections (collection_id, file) VALUES (?, ?)', (collection_counter, file))
 
     conn.commit()
 

@@ -1,7 +1,7 @@
 import os, face_recognition, numpy as np, random, dlib, cv2
 from PIL import Image
 
-path = r'C:\Users\Rafay\Downloads\drstrange'
+path = r'C:\Users\Rafay\John Wick ScreenGrabs'
 upscaled = 'temp.png'
 detector = dlib.get_frontal_face_detector()
 
@@ -19,7 +19,7 @@ for file in os.listdir(path):
     # print(detector(cv2.imread(full_path)))
     # image = face_recognition.load_image_file(upscaled)
     image = face_recognition.load_image_file(full_path)
-    locations = face_recognition.face_locations(image, 1, model='cnn')
+    locations = face_recognition.face_locations(image, 1, model='hog')
     encodings = face_recognition.face_encodings(image, locations, num_jitters=1, model='small')
     if len(encodings) > 0:
         for encoding in encodings:
