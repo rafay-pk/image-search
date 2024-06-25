@@ -13,3 +13,4 @@
 
 A Desktop Application for Tagging and Searching Images and Videos using PyQt6 and Artificial Intelligence
 
+[![DEMO](https://img.youtube.com/vi/eZppKyn6dgE/0.jpg)](https://www.youtube.com/watch?v=eZppKyn6dgE)
